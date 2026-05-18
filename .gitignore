@@ -1,0 +1,11 @@
+.idea
+.DS_Store
+.claude/settings.local.json
+.env
+.blink/
+go.work
+go.work.sum
+
+# compiled binaries - all under ./bin
+/bin/
+**/bin/

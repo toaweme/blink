@@ -1,0 +1,34 @@
+package tui
+
+// LineMsg is sent when a new line of output arrives from a service runner.
+// Child is non-empty for nested processes (e.g. a docker compose container).
+type LineMsg struct {
+	Service string
+	Child   string
+	Line    string
+}
+
+// StatusMsg announces a service status change. Child is non-empty for nested
+// processes managed by a runtime (e.g. docker compose containers).
+type StatusMsg struct {
+	Service string
+	Child   string
+	Status  string
+	Err     error
+}
+
+// WatchStatsMsg carries file + directory counts both in aggregate and
+// per-service. The host CLI polls the supervisor and pushes this in on
+// a slow cadence; the footer renders the totals on the all-tab and the
+// per-service entry on a service tab.
+type WatchStatsMsg struct {
+	Files  int
+	Dirs   int
+	PerSvc map[string]WatchStat
+}
+
+// WatchStat mirrors supervisor.WatchStat without leaking the import.
+type WatchStat struct {
+	Files int
+	Dirs  int
+}
