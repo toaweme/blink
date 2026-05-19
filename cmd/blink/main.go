@@ -61,6 +61,8 @@ func run() error {
 	commandRun := app.NewRunCommand(reg)
 
 	cliApp.Add("run", commandRun)
+	cliApp.Add("init", app.NewInitCommand())
+	cliApp.Add("edit", app.NewEditCommand())
 	cliApp.Default(commandRun)
 
 	if err := cliApp.Run(os.Args[1:]); err != nil {
