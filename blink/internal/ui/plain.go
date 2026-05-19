@@ -68,6 +68,29 @@ func (p *Plain) Run(cfg config.Config) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Subscribe before Start so a fast service's boot-time status/log events
+	// aren't dropped: the Hub only delivers to subscribers that already exist,
+	// and a shell/go service can reach "running"/"crashed" before any consumer
+	// is registered. The buffered subscription channels latch the events; the
+	// consumers below drain them. See blink.go for the same ordering.
+	sub, cancelSub := sup.Subscribe()
+	defer cancelSub()
+
+	// log writing is a Hub subscriber independent of the rendered output, so
+	// `blink run -u plain` still produces <LogDir>/<svc>.log when enabled.
+	var logSub output.Subscription
+	writeLog := cfg.LogWriteEnabled()
+	if writeLog {
+		if err := os.MkdirAll(cfg.Paths.LogDir, 0o755); err != nil {
+			log.Warn("plain ui: failed to create log dir; log writing disabled", "path", cfg.Paths.LogDir, "error", err)
+			writeLog = false
+		} else {
+			var cancelLogSub func()
+			logSub, cancelLogSub = sup.Subscribe()
+			defer cancelLogSub()
+		}
+	}
+
 	if err := sup.Start(ctx); err != nil {
 		return err
 	}
@@ -80,24 +103,14 @@ func (p *Plain) Run(cfg config.Config) error {
 	// raw mode clears the tty's OPOST/ONLCR, so the driver no longer turns
 	// LF into CRLF and printed lines staircase. Translate it ourselves while
 	// raw, but only when stdout is the terminal (piped output stays plain).
+	// Done before the consumers start so emit() never races on p.out.
 	if raw && isatty.IsTerminal(os.Stdout.Fd()) {
 		p.out = &crlfWriter{w: os.Stdout}
 	}
 
-	sub, cancelSub := sup.Subscribe()
-	defer cancelSub()
-
-	// log writing is a Hub subscriber independent of the rendered output, so
-	// `blink run -u plain` still produces <LogDir>/<svc>.log when enabled.
-	if cfg.LogWriteEnabled() {
-		if err := os.MkdirAll(cfg.Paths.LogDir, 0o755); err != nil {
-			log.Warn("plain ui: failed to create log dir; log writing disabled", "path", cfg.Paths.LogDir, "error", err)
-		} else {
-			logSub, cancelLogSub := sup.Subscribe()
-			defer cancelLogSub()
-			sink := newLogSink(cfg.Paths.LogDir, true)
-			go sink.consume(logSub)
-		}
+	if writeLog {
+		sink := newLogSink(cfg.Paths.LogDir, true)
+		go sink.consume(logSub)
 	}
 
 	done := make(chan struct{})

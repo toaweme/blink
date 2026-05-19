@@ -50,16 +50,20 @@ func (h *Headless) Run(cfg config.Config) error {
 		return fmt.Errorf("failed to create log dir %q: %w", cfg.Paths.LogDir, err)
 	}
 
+	// Subscribe before Start so boot-time status/log events from a fast service
+	// aren't dropped (the Hub only delivers to existing subscribers). The
+	// consumeStatus goroutine can spin up first; the buffered channels hold any
+	// events until sink.consume starts draining. See blink.go for the rationale.
+	sub, cancelSub := sup.Subscribe()
+	defer cancelSub()
+	sink := newLogSink(cfg.Paths.LogDir, cfg.LogWriteEnabled())
+	go h.consumeStatus(sub)
+
 	if err := sup.Start(ctx); err != nil {
 		return err
 	}
 	log.Info("running headless", "services", len(cfg.Services), "logs", cfg.Paths.LogDir, "writing", cfg.LogWriteEnabled())
 
-	sub, cancelSub := sup.Subscribe()
-	defer cancelSub()
-
-	sink := newLogSink(cfg.Paths.LogDir, cfg.LogWriteEnabled())
-	go h.consumeStatus(sub)
 	sink.consume(sub) // blocks until the hub closes or ctx cancels
 	return nil
 }

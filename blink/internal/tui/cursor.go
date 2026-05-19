@@ -23,7 +23,7 @@ func (m *Model) ensureCursor() {
 	if m.tabCursor == nil {
 		m.tabCursor = map[string]int{}
 	}
-	tab := m.activeTab()
+	tab := m.viewKey()
 	if _, ok := m.tabCursor[tab]; ok {
 		return
 	}
@@ -41,7 +41,7 @@ func (m Model) cursorAt() int {
 	if m.tabCursor == nil {
 		return -1
 	}
-	idx, ok := m.tabCursor[m.activeTab()]
+	idx, ok := m.tabCursor[m.viewKey()]
 	if !ok {
 		return -1
 	}
@@ -51,7 +51,7 @@ func (m Model) cursorAt() int {
 // moveCursor walks the cursor by delta lines. Positive delta = down.
 func (m *Model) moveCursor(delta int) {
 	m.ensureCursor()
-	tab := m.activeTab()
+	tab := m.viewKey()
 	buf := m.buffers[tab]
 	if len(buf) == 0 {
 		return
@@ -72,13 +72,13 @@ func (m *Model) clearCursor() {
 	if m.tabCursor == nil {
 		return
 	}
-	delete(m.tabCursor, m.activeTab())
+	delete(m.tabCursor, m.viewKey())
 }
 
 // jumpCursorTo moves the cursor to idx. Used by mouse click.
 func (m *Model) jumpCursorTo(idx int) {
 	m.ensureCursor()
-	tab := m.activeTab()
+	tab := m.viewKey()
 	buf := m.buffers[tab]
 	if len(buf) == 0 {
 		return
@@ -174,9 +174,9 @@ func (m *Model) clampCursorToViewport() {
 	}
 	switch {
 	case cursorRow < top:
-		m.tabCursor[m.activeTab()] = m.wrappedToBuffer[top]
+		m.tabCursor[m.viewKey()] = m.wrappedToBuffer[top]
 	case cursorRow > bot:
-		m.tabCursor[m.activeTab()] = m.wrappedToBuffer[bot]
+		m.tabCursor[m.viewKey()] = m.wrappedToBuffer[bot]
 	}
 }
 
@@ -200,15 +200,15 @@ func (m *Model) enterCursorMode() {
 	}
 }
 
-func (m Model) hasSelection() bool { return len(m.selected[m.activeTab()]) > 0 }
+func (m Model) hasSelection() bool { return len(m.selected[m.viewKey()]) > 0 }
 
 func (m *Model) clearSelection() {
-	delete(m.selected, m.activeTab())
+	delete(m.selected, m.viewKey())
 }
 
 // setSelected adds or removes idx from the active tab's selection set.
 func (m *Model) setSelected(idx int, on bool) {
-	tab := m.activeTab()
+	tab := m.viewKey()
 	set := m.selected[tab]
 	if set == nil {
 		set = map[int]bool{}
@@ -228,7 +228,7 @@ func (m *Model) toggleSelect() {
 	if idx < 0 {
 		return
 	}
-	m.setSelected(idx, !m.selected[m.activeTab()][idx])
+	m.setSelected(idx, !m.selected[m.viewKey()][idx])
 }
 
 // extendSelection grows or shrinks the selection with shift+↑/↓. It is
@@ -240,7 +240,7 @@ func (m *Model) toggleSelect() {
 // as the cursor steps back onto it. Bound to shift+↑/↓.
 func (m *Model) extendSelection(delta int) {
 	m.enterCursorMode()
-	tab := m.activeTab()
+	tab := m.viewKey()
 	c := m.cursorAt()
 	if c < 0 {
 		return
@@ -261,7 +261,7 @@ func (m *Model) extendSelection(delta int) {
 
 // selectionIndices returns the active tab's selected buffer indices, sorted.
 func (m Model) selectionIndices() []int {
-	set := m.selected[m.activeTab()]
+	set := m.selected[m.viewKey()]
 	if len(set) == 0 {
 		return nil
 	}
@@ -276,7 +276,7 @@ func (m Model) selectionIndices() []int {
 // linesAt returns the stripped text of the given buffer indices on the active
 // tab, skipping any out-of-range index.
 func (m Model) linesAt(idxs []int) []string {
-	buf := m.buffers[m.activeTab()]
+	buf := m.buffers[m.viewKey()]
 	out := make([]string, 0, len(idxs))
 	for _, i := range idxs {
 		if i < 0 || i >= len(buf) {

@@ -13,6 +13,7 @@ import (
 	"github.com/toaweme/cli/commands/help"
 	"github.com/toaweme/log"
 
+	"github.com/toaweme/blink/addons/docker"
 	"github.com/toaweme/blink/addons/golang"
 	"github.com/toaweme/blink/addons/portkill"
 	"github.com/toaweme/blink/addons/shell"
@@ -40,6 +41,7 @@ func run() error {
 	reg.AddRuntime(
 		shell.Runtime{},
 		golang.Runtime{},
+		docker.Runtime{},
 	)
 	reg.AddHook(portkill.Hook{})
 

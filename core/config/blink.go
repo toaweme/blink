@@ -159,10 +159,12 @@ type Service struct {
 	// Dir is the service directory relative to Config.DirRoot.
 	Dir string `toml:"dir,omitempty" json:"dir,omitempty" yaml:"dir,omitempty"`
 	// Runtime selects the lifecycle owner for this service. Empty = "shell"
-	// (the default; runs the configured Commands as `sh -c`). Other value:
-	// "go". A runtime contributes defaults that are merged into the
+	// (the default; runs the configured Commands as `sh -c`). Other values:
+	// "docker", "go". A runtime contributes defaults that are merged into the
 	// rest of this struct - anything the user sets explicitly wins.
 	Runtime string `toml:"runtime,omitempty" json:"runtime,omitempty" yaml:"runtime,omitempty"`
+	// Docker holds the typed config for `runtime: docker` services.
+	Docker *DockerConfig `toml:"docker,omitempty" json:"docker,omitempty" yaml:"docker,omitempty"`
 	// Go holds the typed config for `runtime: go` services.
 	Go       *GoConfig `toml:"go,omitempty" json:"go,omitempty" yaml:"go,omitempty"`
 	Commands Commands  `toml:"commands,omitempty" json:"commands,omitempty" yaml:"commands,omitempty"`
@@ -183,6 +185,35 @@ type Service struct {
 	// inherit. true = scan Ports and kill any listener before start. false =
 	// never kill, even if the project-wide setting is on.
 	ForceShutdown *bool `toml:"force_shutdown,omitempty" json:"force_shutdown,omitempty" yaml:"force_shutdown,omitempty"`
+}
+
+// DefaultComposeFile is the compose file the docker runtime falls back to when
+// DockerConfig.File is empty. Config detection compares against it so a
+// detected docker service only writes File when it differs from this default.
+const DefaultComposeFile = "docker-compose.yml"
+
+// DockerConfig configures a `runtime: docker` service. The runtime drives
+// `docker compose` and exposes per-container status and logs to the supervisor.
+type DockerConfig struct {
+	// File is the compose file path relative to the service Dir (or DirRoot
+	// if Dir is empty). Default: "docker-compose.yml".
+	File string `toml:"file,omitempty" json:"file,omitempty" yaml:"file,omitempty"`
+	// Project sets compose's `-p`. Default: basename of the resolved Dir.
+	Project string `toml:"project,omitempty" json:"project,omitempty" yaml:"project,omitempty"`
+	// Services restricts the compose stack to a subset. Empty = all services
+	// defined in the compose file.
+	Services []string `toml:"services,omitempty" json:"services,omitempty" yaml:"services,omitempty"`
+	// Logs narrows which container logs blink streams into the UI. Empty
+	// (default) streams every container in the running stack; set it to a
+	// subset to follow only those.
+	Logs []string `toml:"logs,omitempty" json:"logs,omitempty" yaml:"logs,omitempty"`
+	// Wait toggles `docker compose up --wait`. Default: true.
+	Wait *bool `toml:"wait,omitempty" json:"wait,omitempty" yaml:"wait,omitempty"`
+	// StopOnExit makes blink stop the containers it started when it exits.
+	// Default: false - containers persist between blink runs so the next
+	// startup reuses warm databases and is near-instant. Pre-existing
+	// containers (ones blink didn't start) are never touched either way.
+	StopOnExit bool `toml:"stop_on_exit,omitempty" json:"stop_on_exit,omitempty" yaml:"stop_on_exit,omitempty"`
 }
 
 // GoConfig configures a `runtime: go` service. The runtime synthesizes build

@@ -62,10 +62,12 @@ func (b *Blink) Run(cfg config.Config) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := sup.Start(ctx); err != nil {
-		return err
-	}
-
+	// Subscribe (and wire the forwarders) before Start: a fast shell/go service
+	// can reach "running" - or "crashed" - before the first subscriber exists,
+	// and the Hub drops any event with no subscriber. Subscribing first latches
+	// every boot-time status and log line into the buffered subscription
+	// channels; the forwarders drain them once app.Run begins. (Docker only
+	// looked correct because `compose up` is slow enough to publish late.)
 	sub, cancelSub := sup.Subscribe()
 	defer cancelSub()
 	logSub, cancelLogSub := sup.Subscribe()
@@ -74,6 +76,10 @@ func (b *Blink) Run(cfg config.Config) error {
 	go forwardLogs(app, sub)
 	go sink.consume(logSub)
 	go pollWatchStats(ctx, app, sup)
+
+	if err := sup.Start(ctx); err != nil {
+		return err
+	}
 
 	err = app.Run()
 

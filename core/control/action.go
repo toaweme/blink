@@ -38,6 +38,16 @@ const (
 	ActionToggleLogs    Action = "toggle-logs"
 	ActionNextTab       Action = "next-tab"
 	ActionPrevTab       Action = "prev-tab"
+	// container-focus actions cycle which child of a runtime-managed service
+	// (docker compose containers) the active tab shows. No-op on tabs without
+	// children.
+	ActionNextChild Action = "next-child"
+	ActionPrevChild Action = "prev-child"
+	// tab-history actions walk the visited-tab trail (browser back/forward):
+	// after jumping from tab 1 to tab 4, back returns to tab 1. Distinct from
+	// next/prev-tab, which step to the adjacent tab.
+	ActionHistBack    Action = "hist-back"
+	ActionHistForward Action = "hist-forward"
 	ActionClear         Action = "clear"
 	ActionClearAll      Action = "clear-all"
 	// cursor-mode actions. The line cursor is a mode (ActionCursorMode
@@ -75,6 +85,10 @@ func Actions() []Spec {
 		{ActionInsertBlank, ScopeSession, RoleOperator, "insert a blank line into the focused service's output"},
 		{ActionNextTab, ScopeView, RoleViewer, "next tab"},
 		{ActionPrevTab, ScopeView, RoleViewer, "previous tab"},
+		{ActionNextChild, ScopeView, RoleViewer, "focus the next container (docker tab)"},
+		{ActionPrevChild, ScopeView, RoleViewer, "focus the previous container (docker tab)"},
+		{ActionHistBack, ScopeView, RoleViewer, "back to the previously viewed tab"},
+		{ActionHistForward, ScopeView, RoleViewer, "forward in tab history"},
 		{ActionClear, ScopeView, RoleViewer, "clear the focused tab buffer"},
 		{ActionClearAll, ScopeView, RoleViewer, "clear all buffers"},
 		{ActionCursorMode, ScopeView, RoleViewer, "toggle line-export mode"},

@@ -14,6 +14,7 @@ func Detectors() []Detector {
 	return []Detector{
 		goDetector{},
 		airDetector{},
+		dockerDetector{},
 		pythonDetector{},
 		rustDetector{},
 		procfileDetector{},

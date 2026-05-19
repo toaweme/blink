@@ -43,8 +43,24 @@ type Model struct {
 	statuses map[string]string
 	buffers  map[string][]string
 
+	// childList[service] is the ordered, deduped set of container names seen
+	// for a runtime-managed service (docker compose). Drives the in-tab
+	// container ring and the [ / ] focus cycle.
+	childList map[string][]string
+	// childFocus[service] is the container whose logs the service tab is
+	// filtered to. Empty / absent = the merged "all containers" view. Buffers
+	// for a focused container live under the composite key service+childSep+name.
+	childFocus map[string]string
+
 	tabs   []string
 	active int
+
+	// tabHistory is the visited-tab trail behind [ / ] (browser back/forward).
+	// Every recorded move (arrows, number jump, wheel) truncates any forward
+	// entries and appends; histBack/histForward replay it without recording.
+	// histPos is the current index into tabHistory.
+	tabHistory []int
+	histPos    int
 
 	vp      viewport.Model
 	width   int
@@ -177,7 +193,122 @@ func NewModel(services []string, ctrl Controller) Model {
 		spinner:     sp,
 		tabCursor:   map[string]int{},
 		selected:    map[string]map[int]bool{},
+		childList:   map[string][]string{},
+		childFocus:  map[string]string{},
+		tabHistory:  []int{0},
 	}
+}
+
+// gotoTab switches to tab idx and records the move in the back/forward trail.
+// No-op when already there, so a repeated jump doesn't pile up history.
+func (m *Model) gotoTab(idx int) {
+	if idx == m.active {
+		return
+	}
+	m.saveScroll()
+	m.active = idx
+	// drop any forward trail, then append and advance to the new tip.
+	m.tabHistory = append(m.tabHistory[:m.histPos+1:m.histPos+1], idx)
+	m.histPos = len(m.tabHistory) - 1
+	m.restoreScroll()
+}
+
+// histBack / histForward replay the visited-tab trail without recording, so
+// the trail behaves like browser history: back then a fresh jump forks a new
+// branch, back then forward returns to where you were.
+func (m *Model) histBack() {
+	if m.histPos <= 0 {
+		return
+	}
+	m.saveScroll()
+	m.histPos--
+	m.active = m.tabHistory[m.histPos]
+	m.restoreScroll()
+}
+
+func (m *Model) histForward() {
+	if m.histPos >= len(m.tabHistory)-1 {
+		return
+	}
+	m.saveScroll()
+	m.histPos++
+	m.active = m.tabHistory[m.histPos]
+	m.restoreScroll()
+}
+
+// childSep joins a service and a focused container into one buffer/scroll/
+// cursor key. NUL never appears in a service or container name, so the
+// composite can't collide with a plain tab key.
+const childSep = "\x00"
+
+// viewKey is the key the active view's buffer, scroll, cursor and selection
+// state live under: the tab name itself, or a service+container composite
+// while a container is focused. Tab-identity logic (status dots, restart
+// dispatch, the all-tab special case) keeps using activeTab().
+func (m Model) viewKey() string {
+	tab := m.activeTab()
+	if c := m.childFocus[tab]; c != "" {
+		return tab + childSep + c
+	}
+	return tab
+}
+
+// noteChild records a freshly seen container for a service, preserving first-
+// seen order. Idempotent.
+func (m *Model) noteChild(service, child string) {
+	if m.childList == nil {
+		m.childList = map[string][]string{}
+	}
+	for _, c := range m.childList[service] {
+		if c == child {
+			return
+		}
+	}
+	m.childList[service] = append(m.childList[service], child)
+}
+
+// appendChildLine stores a raw (unprefixed) container line in its own buffer so
+// a focused container tab renders clean output. The prefixed copy still lands
+// in the merged service buffer and the all-tab via appendLine.
+func (m *Model) appendChildLine(service, child, line string) {
+	key := service + childSep + child
+	buf := append(m.buffers[key], line)
+	if len(buf) > maxBufferedLines {
+		buf = buf[len(buf)-maxBufferedLines:]
+	}
+	m.buffers[key] = buf
+}
+
+// cycleChild advances the active service tab's container focus around the ring
+// "all" → first container → … → last → "all". No-op on tabs with no containers.
+func (m *Model) cycleChild(delta int) {
+	tab := m.activeTab()
+	children := m.childList[tab]
+	if len(children) == 0 {
+		return
+	}
+	m.saveScroll()
+	// ring index 0 is the merged "all" view; 1..n map to children[idx-1].
+	idx := 0
+	if cur := m.childFocus[tab]; cur != "" {
+		for i, c := range children {
+			if c == cur {
+				idx = i + 1
+				break
+			}
+		}
+	}
+	n := len(children) + 1
+	idx = (idx + delta + n) % n
+	if m.childFocus == nil {
+		m.childFocus = map[string]string{}
+	}
+	if idx == 0 {
+		delete(m.childFocus, tab)
+	} else {
+		m.childFocus[tab] = children[idx-1]
+	}
+	m.restoreScroll()
 }
 
 func (m Model) Init() tea.Cmd {
@@ -224,14 +355,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Action == tea.MouseActionPress {
 			switch msg.Button {
 			case tea.MouseButtonWheelLeft:
-				m.saveScroll()
-				m.active = (m.active - 1 + len(m.tabs)) % len(m.tabs)
-				m.restoreScroll()
+				m.gotoTab((m.active - 1 + len(m.tabs)) % len(m.tabs))
 				return m, nil
 			case tea.MouseButtonWheelRight:
-				m.saveScroll()
-				m.active = (m.active + 1) % len(m.tabs)
-				m.restoreScroll()
+				m.gotoTab((m.active + 1) % len(m.tabs))
 				return m, nil
 			}
 		}
@@ -282,6 +409,10 @@ func (m Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleLineMsg(msg LineMsg) (tea.Model, tea.Cmd) {
 	line := msg.Line
 	if msg.Child != "" {
+		// raw line into the per-container buffer (clean, for a focused tab);
+		// the prefixed copy still flows into the merged service + all views.
+		m.noteChild(msg.Service, msg.Child)
+		m.appendChildLine(msg.Service, msg.Child, msg.Line)
 		line = lipgloss.NewStyle().Faint(true).Render("["+msg.Child+"]") + " " + line
 	}
 	m.appendLine(msg.Service, line)
@@ -320,6 +451,10 @@ func (m Model) handleStatusMsg(msg StatusMsg) (tea.Model, tea.Cmd) {
 	}
 	label := "── " + msg.Status + " ──"
 	if msg.Child != "" {
+		// surface the container so it joins the in-tab ring even before its
+		// first log line, and give its focused view the bare status marker.
+		m.noteChild(msg.Service, msg.Child)
+		m.appendChildLine(msg.Service, msg.Child, lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("── "+msg.Status+" ──"))
 		label = "── " + msg.Child + ": " + msg.Status + " ──"
 	}
 	labelLine := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render(label)
@@ -461,7 +596,7 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "end", "G":
 		if m.cursorMode {
-			m.jumpCursorTo(len(m.buffers[m.activeTab()]) - 1)
+			m.jumpCursorTo(len(m.buffers[m.viewKey()]) - 1)
 			m.refreshViewport()
 			return m, nil
 		}
@@ -492,14 +627,22 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case control.ActionToggleZen:
 		return m, m.enterRawMode()
 	case control.ActionNextTab:
-		m.saveScroll()
-		m.active = (m.active + 1) % len(m.tabs)
-		m.restoreScroll()
+		m.gotoTab((m.active + 1) % len(m.tabs))
 		return m, nil
 	case control.ActionPrevTab:
-		m.saveScroll()
-		m.active = (m.active - 1 + len(m.tabs)) % len(m.tabs)
-		m.restoreScroll()
+		m.gotoTab((m.active - 1 + len(m.tabs)) % len(m.tabs))
+		return m, nil
+	case control.ActionHistBack:
+		m.histBack()
+		return m, nil
+	case control.ActionHistForward:
+		m.histForward()
+		return m, nil
+	case control.ActionNextChild:
+		m.cycleChild(1)
+		return m, nil
+	case control.ActionPrevChild:
+		m.cycleChild(-1)
 		return m, nil
 	case control.ActionRestart:
 		if name := m.activeTab(); name != allTab && m.control != nil {
@@ -571,10 +714,8 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		r := msg.Runes[0]
 		if r >= '1' && r <= '9' {
 			idx := int(r - '0')
-			if idx < len(m.tabs) && idx != m.active {
-				m.saveScroll()
-				m.active = idx
-				m.restoreScroll()
+			if idx < len(m.tabs) {
+				m.gotoTab(idx)
 			}
 		}
 	}
@@ -587,7 +728,7 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // handleClear empties the active tab's buffer. Terminal-only: never
 // touches disk.
 func (m Model) handleClear() (tea.Model, tea.Cmd) {
-	m.clearTab(m.activeTab())
+	m.clearTab(m.viewKey())
 	m.refreshViewport()
 	return m, nil
 }
@@ -613,7 +754,7 @@ func (m *Model) enterRawMode() tea.Cmd {
 	cmds := []tea.Cmd{tea.ExitAltScreen, tea.DisableMouse}
 	// flush current buffer into the native scrollback so the user lands on
 	// real content instead of an empty screen.
-	if buf := m.buffers[m.activeTab()]; len(buf) > 0 {
+	if buf := m.buffers[m.viewKey()]; len(buf) > 0 {
 		cmds = append(cmds, tea.Println(strings.Join(buf, "\n")))
 	}
 	return tea.Sequence(cmds...)
@@ -639,7 +780,7 @@ func (m *Model) saveScroll() {
 	if !m.ready {
 		return
 	}
-	m.scrollState[m.activeTab()] = tabScroll{
+	m.scrollState[m.viewKey()] = tabScroll{
 		yOffset:    m.vp.YOffset,
 		followTail: m.followTail,
 	}
@@ -655,10 +796,10 @@ func (m *Model) restoreScroll() {
 		return
 	}
 	// rerender for the now-active tab before repositioning.
-	content, mapping := m.renderBufferMapped(m.buffers[m.activeTab()])
+	content, mapping := m.renderBufferMapped(m.buffers[m.viewKey()])
 	m.wrappedToBuffer = mapping
 	m.vp.SetContent(content)
-	s, ok := m.scrollState[m.activeTab()]
+	s, ok := m.scrollState[m.viewKey()]
 	if !ok {
 		m.followTail = true
 		m.vp.GotoBottom()
@@ -740,7 +881,7 @@ func (m *Model) refreshViewport() {
 		return
 	}
 	offset := m.vp.YOffset
-	content, mapping := m.renderBufferMapped(m.buffers[m.activeTab()])
+	content, mapping := m.renderBufferMapped(m.buffers[m.viewKey()])
 	m.wrappedToBuffer = mapping
 	m.vp.SetContent(content)
 	m.vp.SetYOffset(offset)
@@ -754,7 +895,7 @@ func (m *Model) refreshViewportFollow() {
 	}
 	follow := m.followTail
 	offset := m.vp.YOffset
-	content, mapping := m.renderBufferMapped(m.buffers[m.activeTab()])
+	content, mapping := m.renderBufferMapped(m.buffers[m.viewKey()])
 	m.wrappedToBuffer = mapping
 	m.vp.SetContent(content)
 	if follow {
@@ -782,7 +923,7 @@ func (m Model) renderBufferMapped(lines []string) (string, []int) {
 	var selected map[int]bool
 	if m.cursorMode {
 		headIdx = m.cursorAt()
-		selected = m.selected[m.activeTab()]
+		selected = m.selected[m.viewKey()]
 	}
 	// all three gutter markers use the same left-edge glyph so the cursor and
 	// selection bars line up exactly; only the color differs (cursor, selected,
@@ -941,6 +1082,15 @@ func (m Model) renderFooter() string {
 	} else if key := m.keyFor(control.ActionCursorMode); key != "" {
 		left = val.Render(key) + dim.Render(" export lines")
 	}
+	// container switcher hint, only on a tab that has children (docker). Lives
+	// in the footer so it never has to fit alongside the header tab chips.
+	if nav := m.renderContainerNav(dim, val); nav != "" {
+		if left != "" {
+			left = nav + dim.Render("  ·  ") + left
+		} else {
+			left = nav
+		}
+	}
 
 	// center: watch stats, shown only for a moment after a tab switch then
 	// faded - permanent counts cluttered the bar without earning it. On the
@@ -968,6 +1118,33 @@ func (m Model) renderFooter() string {
 	right := m.renderRightFooter(dim, val, accent)
 
 	return m.renderBar(left, center, right)
+}
+
+// renderContainerNav renders the compact container indicator shown in the
+// footer for a service tab that has children (docker compose). Form
+// "<key> <focus> i/n": the bound switch key (Tab), then the focus ("all" or a
+// container name) and ring position. A single key, not "key / key" which read
+// like the `/` command. Empty for tabs without children, so ordinary services
+// get no extra footer chrome, and always one short segment regardless of count.
+func (m Model) renderContainerNav(dim, val lipgloss.Style) string {
+	children := m.childList[m.activeTab()]
+	if len(children) == 0 {
+		return ""
+	}
+	focus := m.childFocus[m.activeTab()]
+	label, idx := "all", 0
+	if focus != "" {
+		label = focus
+		for i, c := range children {
+			if c == focus {
+				idx = i + 1
+				break
+			}
+		}
+	}
+	key := m.keyFor(control.ActionNextChild)
+	return val.Render(key) + dim.Render(" ") + val.Render(label) +
+		dim.Render(fmt.Sprintf(" %d/%d", idx+1, len(children)+1))
 }
 
 // renderCursorHints renders the selection-mode shortcut strip shown in the
@@ -1077,6 +1254,9 @@ func (m Model) modeBadges() string {
 	}
 	if m.cursorMode {
 		pills = append(pills, badge("SELECT", "214"))
+	}
+	if c := m.childFocus[m.activeTab()]; c != "" {
+		pills = append(pills, badge(c, "36"))
 	}
 	return strings.Join(pills, " ")
 }

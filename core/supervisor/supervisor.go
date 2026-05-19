@@ -322,9 +322,10 @@ func (s *Supervisor) runManaged(st *serviceState) {
 
 	s.wg.Add(1)
 	go s.forwardManagerEvents(st)
-	// Service-level output (Child==""). Docker returns nil here (it only
-	// follows named children); the agent runtime returns its PTY-capture
-	// stream so the agent's lines surface like any other service.
+	// Service-level output (Child==""). The docker runtime multiplexes every
+	// container onto this one stream, tagging each line with its container in
+	// LogLine.Child, so per-container logs flow without the supervisor knowing
+	// the container set up front.
 	if ch := mgr.Logs(""); ch != nil {
 		s.wg.Add(1)
 		go s.forwardManagerLogs(st.svc.Name, ch)
@@ -359,9 +360,10 @@ func (s *Supervisor) runManaged(st *serviceState) {
 	}
 }
 
-// collectChildren returns log-follow children for a managed service. No
-// built-in runtime declares any today, so this is always empty; it stays
-// as the seam a future manager-style runtime plugs into.
+// collectChildren returns the named per-child log channels a managed service
+// wants pulled in addition to the aggregate Logs("") stream. Docker streams
+// every container through Logs("") instead, so this stays empty; it remains
+// the seam for a runtime that exposes one channel per named child.
 func collectChildren(svc config.Service) []string {
 	return nil
 }

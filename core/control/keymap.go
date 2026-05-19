@@ -21,6 +21,10 @@ func DefaultKeymap() Keymap {
 	return Keymap{bindings: map[string]Action{
 		"right":      ActionNextTab,
 		"left":       ActionPrevTab,
+		"[":          ActionHistBack,
+		"]":          ActionHistForward,
+		"tab":        ActionNextChild,
+		"shift+tab":  ActionPrevChild,
 		"r":          ActionRestart,
 		"R":          ActionRestartAll,
 		"enter":      ActionInsertBlank,
