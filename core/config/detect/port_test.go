@@ -46,9 +46,15 @@ func Test_SniffPorts(t *testing.T) {
 			want:  []int{8080, 9100},
 		},
 		{
-			name:  "falls back to root .env when service dir has none",
+			name:  "does not pull from the project root for a sub-dir service",
 			files: map[string]string{".env": "PORT=4000\n"},
 			svc:   config.Service{Name: "z", Dir: "z"},
+			want:  nil,
+		},
+		{
+			name:  "root-dir service reads the root .env",
+			files: map[string]string{".env": "PORT=4000\n"},
+			svc:   config.Service{Name: "root", Dir: ""},
 			want:  []int{4000},
 		},
 		{

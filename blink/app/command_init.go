@@ -74,11 +74,21 @@ func scanServices(cwd string) ([]config.Service, error) {
 	}
 	services := make([]config.Service, 0, len(detected))
 	for _, d := range detected {
-		svc := d.Service
-		if len(svc.Ports) == 0 {
-			svc.Ports = detect.SniffPorts(cwd, svc)
+		services = append(services, d.Service)
+	}
+
+	// Only sniff ports from a .env that belongs to a single service's own
+	// directory. When several services share a dir (a monorepo where every
+	// service runs from the root), that dir's .env can't be attributed to one
+	// of them, so attaching its ports would tag them all identically.
+	dirCount := make(map[string]int, len(services))
+	for _, s := range services {
+		dirCount[s.Dir]++
+	}
+	for i := range services {
+		if len(services[i].Ports) == 0 && dirCount[services[i].Dir] == 1 {
+			services[i].Ports = detect.SniffPorts(cwd, services[i])
 		}
-		services = append(services, svc)
 	}
 	return services, nil
 }

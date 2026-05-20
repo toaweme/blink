@@ -206,10 +206,23 @@ func (m picker) renderRow(i int, it pickItem, nameW int) string {
 	name := nameStyle.Render(padRight(it.svc.Name, nameW))
 
 	rt := dim.Render(padRight(runtimeLabel(it.svc.Runtime), 7))
+
+	portStr := portList(it.svc.Ports)
+	// keep the row on one line: budget the summary against the terminal width
+	// after the fixed-width columns and the ports, so a long run command
+	// truncates with an ellipsis instead of wrapping.
 	summary := serviceSummary(it.svc)
+	if m.width > 0 {
+		used := 2 + 4 + nameW + 1 + 8 + 2 // cursor, box, name, gap, runtime, gaps
+		if portStr != "" {
+			used += len(portStr) + 2
+		}
+		summary = truncate(summary, m.width-used)
+	}
+
 	ports := ""
-	if len(it.svc.Ports) > 0 {
-		ports = "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render(portList(it.svc.Ports))
+	if portStr != "" {
+		ports = "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render(portStr)
 	}
 
 	return fmt.Sprintf("%s%s %s %s %s%s", cursor, box, name, rt, dim.Render(summary), ports)
@@ -318,6 +331,22 @@ func uniqueName(base string, taken map[string]bool) string {
 			return c
 		}
 	}
+}
+
+// truncate clips s to max runes, marking the cut with an ellipsis. A max of 0
+// or less yields "" so a narrow terminal never wraps the row.
+func truncate(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	if max == 1 {
+		return "…"
+	}
+	return string(r[:max-1]) + "…"
 }
 
 func padRight(s string, n int) string {

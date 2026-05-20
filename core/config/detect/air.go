@@ -18,6 +18,14 @@ import (
 // describing a separate process, so every matching file becomes its own
 // service. blink owns the watch+restart loop air would normally run, so the
 // air build/run commands are ported and reload is enabled.
+//
+// When air's `cmd` is a recognisable `go build` (the common case - air is
+// overwhelmingly used for Go), the service is emitted as a native `go` runtime:
+// the package comes from the build command (cd-aware), the subcommand/flags
+// from args_bin. That folds air services into the same go-runtime shape as
+// main()-package detection, so the final list is uniform and gets go.work
+// workspace watching for free. Anything blink can't read as a go build (make,
+// npm, ...) falls back to a faithful shell service.
 type airDetector struct{}
 
 var _ Detector = airDetector{}
@@ -65,29 +73,113 @@ func (airDetector) Detect(dir string) ([]Detected, error) {
 		base := filepath.Base(path)
 		name := airServiceName(base, dir)
 		svc := config.Service{
-			Name:    name,
-			Runtime: "shell",
-			Reload:  config.Reload{Reload: true},
+			Name:   name,
+			Reload: config.Reload{Reload: true},
 			Fs: config.Fs{
 				Extensions: stripDots(ac.Build.IncludeExt),
 				Exclude:    excludeGlobs(ac.Build.ExcludeDir),
 			},
 		}
-		if ac.Build.Cmd != "" {
-			svc.Commands.Build = &config.Command{Command: ac.Build.Cmd}
-		}
-		if run := airRunCommand(ac.Build); run != "" {
-			svc.Commands.Run = &config.Command{Command: run, Service: true}
+
+		label := name + " (air)"
+		if pkg, ok := parseGoBuild(ac.Build.Cmd); ok {
+			// native go runtime: blink builds+runs the package and watches the
+			// go.work workspace. The subcommand/flags air passed to the binary
+			// become the go runtime's args.
+			svc.Runtime = "go"
+			svc.Go = &config.GoConfig{Package: pkg, Args: ac.Build.ArgsBin}
+			label = name + " (air · go " + pkg + ")"
+		} else {
+			// not a go build (make, npm, ...): keep air's exact build+run as a
+			// shell service.
+			svc.Runtime = "shell"
+			if ac.Build.Cmd != "" {
+				svc.Commands.Build = &config.Command{Command: ac.Build.Cmd}
+			}
+			if run := airRunCommand(ac.Build); run != "" {
+				svc.Commands.Run = &config.Command{Command: run, Service: true}
+			}
 		}
 
 		out = append(out, Detected{
 			Service: svc,
 			Source:  "air",
 			File:    base,
-			Label:   name + " (air)",
+			Label:   label,
 		})
 	}
 	return out, nil
+}
+
+// parseGoBuild extracts the Go package path from an air `cmd`, returning it as
+// a root-relative path ("." or "./cmd/v2/registry") and ok=false when the
+// command isn't a recognisable `go build` (make, npm, a script, ...), so the
+// caller falls back to a shell service. It handles a leading `cd <dir> &&`
+// (common when a submodule has its own go.mod) by resolving the package
+// relative to that dir, so the build still runs from the project root.
+func parseGoBuild(cmd string) (string, bool) {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
+		return "", false
+	}
+
+	cdDir := ""
+	build := ""
+	for _, seg := range strings.Split(cmd, "&&") {
+		seg = strings.TrimSpace(seg)
+		switch {
+		case strings.HasPrefix(seg, "cd "):
+			cdDir = strings.TrimSpace(strings.TrimPrefix(seg, "cd "))
+		case strings.Contains(seg, "go build"):
+			build = seg
+		}
+	}
+	if build == "" {
+		return "", false
+	}
+
+	pkg, ok := goBuildPackage(build)
+	if !ok {
+		return "", false
+	}
+	return joinPkg(cdDir, pkg), true
+}
+
+// goBuildPackage pulls the package argument out of a `go build ...` segment: the
+// last non-flag token, skipping the `-o <out>` pair. Defaults to "." (build the
+// current directory) when no explicit package is given.
+func goBuildPackage(build string) (string, bool) {
+	idx := strings.Index(build, "go build")
+	if idx < 0 {
+		return "", false
+	}
+	pkg := "."
+	fields := strings.Fields(build[idx+len("go build"):])
+	for i := 0; i < len(fields); i++ {
+		f := fields[i]
+		if f == "-o" {
+			i++ // skip the output path that follows
+			continue
+		}
+		if strings.HasPrefix(f, "-") {
+			continue // any other flag (e.g. -ldflags=...)
+		}
+		pkg = f // last non-flag token wins
+	}
+	return pkg, true
+}
+
+// joinPkg resolves a package path that was written relative to a `cd` dir back
+// to a root-relative "./..." form (or "." for the root package).
+func joinPkg(cdDir, pkg string) string {
+	if cdDir != "" {
+		pkg = path.Join(cdDir, pkg)
+	}
+	pkg = path.Clean(strings.TrimPrefix(pkg, "./"))
+	if pkg == "." || pkg == "" {
+		return "."
+	}
+	return "./" + pkg
 }
 
 // airServiceName derives a service name from the air filename. ".air.toml"

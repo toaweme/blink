@@ -16,33 +16,26 @@ import (
 var portEnvFiles = []string{".env", ".env.local", ".env.development", ".env.dev", ".env.example"}
 
 // SniffPorts makes a best-effort guess at the TCP port(s) a service listens on
-// by reading dotenv files in its directory (falling back to the project root).
-// It looks for PORT-ish keys (PORT, HTTP_PORT, ...) and ADDR-ish keys whose
-// value carries a ":port". Returns the unique ports found in first-seen order,
-// or nil. It never reads source code - a wrong guess here would have blink kill
-// an unrelated process before start, so the bar for a match is deliberately high.
+// by reading dotenv files in its own directory (root+svc.Dir). It looks for
+// PORT-ish keys (PORT, HTTP_PORT, ...) and ADDR-ish keys whose value carries a
+// ":port". Returns the unique ports found in first-seen order, or nil.
+//
+// It reads only the service's own directory - never the project root and never
+// source code. A shared monorepo root .env lists ports for many services and
+// can't be attributed to any one of them, so pulling from it would tag every
+// service with the same bogus list (and blink would then kill all of them on
+// start). The caller (scanServices) further skips dirs shared by >1 service.
 func SniffPorts(root string, svc config.Service) []int {
-	dirs := []string{filepath.Join(root, svc.Dir)}
-	if svc.Dir != "" {
-		dirs = append(dirs, root) // fall back to the project root for monorepo .env at the top
-	}
-
+	dir := filepath.Join(root, svc.Dir)
 	seen := make(map[int]bool)
 	var ports []int
-	for _, dir := range dirs {
-		for _, name := range portEnvFiles {
-			for _, p := range portsFromEnvFile(filepath.Join(dir, name)) {
-				if p < 1 || p > 65535 || seen[p] {
-					continue
-				}
-				seen[p] = true
-				ports = append(ports, p)
+	for _, name := range portEnvFiles {
+		for _, p := range portsFromEnvFile(filepath.Join(dir, name)) {
+			if p < 1 || p > 65535 || seen[p] {
+				continue
 			}
-		}
-		if len(ports) > 0 {
-			// a port found in the service's own dir wins; don't also pull
-			// unrelated ports from the root .env.
-			break
+			seen[p] = true
+			ports = append(ports, p)
 		}
 	}
 	return ports

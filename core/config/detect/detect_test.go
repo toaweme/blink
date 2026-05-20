@@ -188,34 +188,27 @@ func Test_AirDetector_PerFileServices(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Detect: %v", err)
 	}
-
-	want := map[string]string{
-		filepath.Base(dir): "./tmp/main --flag", // .air.toml -> dir basename
-		"registry":         "./tmp/registry",
-		"slack":            "./tmp/slack --verbose",
-		"schema":           "./tmp/schema",
-		"workflow":         "./tmp/workflow",
-	}
-	if len(got) != len(want) {
-		t.Fatalf("got %d services %v, want %d", len(got), names(got), len(want))
-	}
-	for name, run := range want {
-		d, ok := find(got, name)
-		if !ok {
-			t.Fatalf("missing air service %q in %v", name, names(got))
-		}
-		if d.Service.Commands.Run == nil || d.Service.Commands.Run.Command != run {
-			t.Fatalf("%q run = %+v, want %q", name, d.Service.Commands.Run, run)
-		}
-		if !d.Service.Reload.Reload {
-			t.Fatalf("%q should have reload enabled", name)
-		}
+	if len(got) != 5 {
+		t.Fatalf("got %d services %v, want 5", len(got), names(got))
 	}
 
-	// the .air.toml service ports the full build mapping.
-	root, _ := find(got, filepath.Base(dir))
-	if root.Service.Commands.Build == nil || root.Service.Commands.Build.Command != "go build -o ./tmp/main ." {
-		t.Fatalf("root build = %+v", root.Service.Commands.Build)
+	// .air.toml carries a `go build` cmd, so it becomes a native go runtime:
+	// package from the build, args from args_bin. No shell Commands.
+	root, ok := find(got, filepath.Base(dir))
+	if !ok {
+		t.Fatalf("missing root air service in %v", names(got))
+	}
+	if root.Service.Runtime != "go" {
+		t.Fatalf("root runtime = %q, want go", root.Service.Runtime)
+	}
+	if root.Service.Go == nil || root.Service.Go.Package != "." {
+		t.Fatalf("root go package = %+v, want .", root.Service.Go)
+	}
+	if got, want := root.Service.Go.Args, []string{"--flag"}; !equalStrings(got, want) {
+		t.Fatalf("root args = %v, want %v", got, want)
+	}
+	if root.Service.Commands.Run != nil || root.Service.Commands.Build != nil {
+		t.Fatalf("go-runtime air service should not carry shell Commands: %+v", root.Service.Commands)
 	}
 	if got, want := root.Service.Fs.Extensions, []string{"go", "tmpl"}; !equalStrings(got, want) {
 		t.Fatalf("root extensions = %v, want %v (dots stripped)", got, want)
@@ -225,6 +218,56 @@ func Test_AirDetector_PerFileServices(t *testing.T) {
 	// excludes by default (node_modules, ui/node_modules, build) are dropped.
 	if got, want := root.Service.Fs.Exclude, []string{"**/tmp/**", "**/vendor/**"}; !equalStrings(got, want) {
 		t.Fatalf("root exclude = %v, want %v", got, want)
+	}
+
+	// the other configs declare only bin/full_bin (no go-build cmd), so they
+	// stay faithful shell services running that binary.
+	wantShell := map[string]string{
+		"registry": "./tmp/registry",
+		"slack":    "./tmp/slack --verbose",
+		"schema":   "./tmp/schema",
+		"workflow": "./tmp/workflow",
+	}
+	for name, run := range wantShell {
+		d, ok := find(got, name)
+		if !ok {
+			t.Fatalf("missing air service %q in %v", name, names(got))
+		}
+		if d.Service.Runtime != "shell" {
+			t.Fatalf("%q runtime = %q, want shell", name, d.Service.Runtime)
+		}
+		if d.Service.Commands.Run == nil || d.Service.Commands.Run.Command != run {
+			t.Fatalf("%q run = %+v, want %q", name, d.Service.Commands.Run, run)
+		}
+		if !d.Service.Reload.Reload {
+			t.Fatalf("%q should have reload enabled", name)
+		}
+	}
+}
+
+func Test_ParseGoBuild(t *testing.T) {
+	tests := []struct {
+		name    string
+		cmd     string
+		wantPkg string
+		wantOK  bool
+	}{
+		{"root build", "go build -o ./build/app .", ".", true},
+		{"sub package", "go build -o ./build/api ./cmd/api", "./cmd/api", true},
+		{"cd into module", "cd cmd/v2/registry && go build -o ../../../build/registry .", "./cmd/v2/registry", true},
+		{"clear then build", "clear && go build -o ./build/app .", ".", true},
+		{"no explicit package", "go build -o ./build/app", ".", true},
+		{"not go", "make build", "", false},
+		{"npm", "npm run build", "", false},
+		{"empty", "", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pkg, ok := parseGoBuild(tt.cmd)
+			if ok != tt.wantOK || pkg != tt.wantPkg {
+				t.Fatalf("parseGoBuild(%q) = (%q, %v), want (%q, %v)", tt.cmd, pkg, ok, tt.wantPkg, tt.wantOK)
+			}
+		})
 	}
 }
 
