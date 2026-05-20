@@ -370,3 +370,18 @@ func equalStrings(a, b []string) bool {
 	}
 	return true
 }
+
+func Test_Scan_DockerFirst(t *testing.T) {
+	dir := writeFiles(t, map[string]string{
+		"go.mod":             "module github.com/acme/widgets\n\ngo 1.22\n",
+		"cmd/api/main.go":    "package main\n\nfunc main() {}\n",
+		"docker-compose.yml": "services:\n  db:\n    image: postgres\n",
+	})
+	_, detected, err := Scan(dir)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	if len(detected) == 0 || detected[0].Service.Runtime != "docker" {
+		t.Fatalf("first service = %v, want docker first", names(detected))
+	}
+}

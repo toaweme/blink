@@ -25,32 +25,57 @@ var portEnvFiles = []string{".env", ".env.local", ".env.development", ".env.dev"
 // can't be attributed to any one of them, so pulling from it would tag every
 // service with the same bogus list (and blink would then kill all of them on
 // start). The caller (scanServices) further skips dirs shared by >1 service.
-func SniffPorts(root string, svc config.Service) []int {
+func SniffPorts(root string, svc config.Service) []config.Port {
 	dir := filepath.Join(root, svc.Dir)
 	seen := make(map[int]bool)
-	var ports []int
+	var ports []config.Port
 	for _, name := range portEnvFiles {
-		for _, p := range portsFromEnvFile(filepath.Join(dir, name)) {
-			if p < 1 || p > 65535 || seen[p] {
+		for _, ep := range portsFromEnvFile(filepath.Join(dir, name)) {
+			if ep.port < 1 || ep.port > 65535 || seen[ep.port] {
 				continue
 			}
-			seen[p] = true
-			ports = append(ports, p)
+			seen[ep.port] = true
+			ports = append(ports, config.LiteralPort(ep.port))
 		}
 	}
 	return ports
 }
 
+// EnvKeyForPort reports the env var in the service's own .env files whose value
+// is the given port, if any. It powers `blink init`'s runtime probe: once a
+// service is observed binding a port, blink prefers writing the env-var name over the
+// bare number so the config tracks the .env instead of hardcoding it. The first
+// matching key (in portEnvFiles, then file order) wins.
+func EnvKeyForPort(root string, svc config.Service, port int) (string, bool) {
+	dir := filepath.Join(root, svc.Dir)
+	for _, name := range portEnvFiles {
+		for _, ep := range portsFromEnvFile(filepath.Join(dir, name)) {
+			if ep.port == port {
+				return ep.key, true
+			}
+		}
+	}
+	return "", false
+}
+
+// envPort pairs the env var name with the port parsed from its value, so the
+// caller can both list ports (SniffPorts) and map a port back to its key
+// (EnvKeyForPort).
+type envPort struct {
+	key  string
+	port int
+}
+
 // portsFromEnvFile parses KEY=VALUE lines and extracts a port from any key that
 // names a port or address. Missing files yield nil (the common case).
-func portsFromEnvFile(path string) []int {
+func portsFromEnvFile(path string) []envPort {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil
 	}
 	defer f.Close()
 
-	var ports []int
+	var ports []envPort
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
@@ -68,7 +93,7 @@ func portsFromEnvFile(path string) []int {
 			continue
 		}
 		if p, ok := portFromValue(val); ok {
-			ports = append(ports, p)
+			ports = append(ports, envPort{key: key, port: p})
 		}
 	}
 	return ports

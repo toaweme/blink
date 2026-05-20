@@ -14,7 +14,7 @@ import (
 func TestWriterFormats(t *testing.T) {
 	cfg := config.Config{
 		Services: []config.Service{
-			{Name: "api", Runtime: "go", Ports: []int{8080}},
+			{Name: "api", Runtime: "go", Ports: []config.Port{config.LiteralPort(8080)}},
 			{Name: "db", Runtime: "docker"},
 		},
 	}

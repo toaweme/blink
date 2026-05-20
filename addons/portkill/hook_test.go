@@ -32,7 +32,7 @@ func TestHookRunNoopWhenForceShutdownDisabled(t *testing.T) {
 	// must not invoke Kill because the effective ForceShutdown is false. Since
 	// Run short-circuits before calling Kill, no error is returned.
 	cfg := config.Config{ForceShutdown: boolPtr(true)}
-	svc := config.Service{Name: "svc", Ports: []int{12345}, ForceShutdown: boolPtr(false)}
+	svc := config.Service{Name: "svc", Ports: []config.Port{config.LiteralPort(12345)}, ForceShutdown: boolPtr(false)}
 
 	// sanity-check the resolution itself
 	assert.False(t, forceShutdownEnabled(cfg, svc))

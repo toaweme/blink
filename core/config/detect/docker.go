@@ -63,6 +63,18 @@ func (dockerDetector) Detect(dir string) ([]Detected, error) {
 	}}, nil
 }
 
+// ComposeServices returns the names of every service declared in the compose
+// file a docker service points at (root + svc.Dir + the configured file,
+// defaulting the filename). Callers use it to tell whether a service's recorded
+// subset covers the whole stack.
+func ComposeServices(root string, svc config.Service) ([]string, error) {
+	file := config.DefaultComposeFile
+	if svc.Docker != nil && svc.Docker.File != "" {
+		file = svc.Docker.File
+	}
+	return composeServices(filepath.Join(root, svc.Dir, file))
+}
+
 // composeServices parses the top-level services map of a compose file and
 // returns the service names in declaration order.
 func composeServices(path string) ([]string, error) {

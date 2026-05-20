@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"github.com/toaweme/cli"
 
 	"github.com/toaweme/blink/blink/internal/configform"
+	"github.com/toaweme/blink/core/addon"
 	"github.com/toaweme/blink/core/config"
 	"github.com/toaweme/blink/core/config/detect"
 	"github.com/toaweme/blink/core/config/format"
@@ -21,12 +23,15 @@ type InitConfig struct {
 
 type InitCommand struct {
 	cli.BaseCommand[InitConfig]
+	reg *addon.Registry
 }
 
 var _ cli.Command[InitConfig] = (*InitCommand)(nil)
 
-func NewInitCommand() *InitCommand {
-	return &InitCommand{BaseCommand: cli.NewBaseCommand[InitConfig]()}
+// NewInitCommand builds the init command. reg supplies the runtimes used by the
+// picker's port-probe key, which spins a service up to observe its real ports.
+func NewInitCommand(reg *addon.Registry) *InitCommand {
+	return &InitCommand{BaseCommand: cli.NewBaseCommand[InitConfig](), reg: reg}
 }
 
 func (c *InitCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
@@ -44,7 +49,14 @@ func (c *InitCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
 		return err
 	}
 
-	kept, err := configform.PickServices("blink init", services, nil)
+	// cancel any probe still running in the background when init returns.
+	probeCtx, cancelProbes := context.WithCancel(context.Background())
+	defer cancelProbes()
+	probeFn := func(svc config.Service) ([]config.Port, error) {
+		return runtimeProbe(probeCtx, c.reg, options.Cwd, svc)
+	}
+
+	kept, err := configform.PickServices("blink init", services, nil, probeFn)
 	if err != nil {
 		if errors.Is(err, configform.ErrCanceled) {
 			fmt.Println("aborted, nothing written")
@@ -58,6 +70,7 @@ func (c *InitCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
 	}
 
 	cfg := config.Config{Services: kept}
+	trimWriteDefaults(options.Cwd, &cfg)
 	if err := writeConfig(target, cfg); err != nil {
 		return err
 	}
@@ -91,6 +104,50 @@ func scanServices(cwd string) ([]config.Service, error) {
 		}
 	}
 	return services, nil
+}
+
+// trimWriteDefaults drops config that merely echoes what blink would detect
+// anyway, so a default selection produces a minimal blink.yaml. Currently: a
+// docker service whose recorded Services cover the whole compose file - an empty
+// list already means "run the entire stack", so naming every container adds
+// nothing (the same reasoning the detector uses to omit a default compose
+// filename). A genuine hand-authored subset is shorter than the full set and is
+// left untouched.
+func trimWriteDefaults(cwd string, cfg *config.Config) {
+	for i := range cfg.Services {
+		svc := &cfg.Services[i]
+		if svc.Runtime != "docker" || svc.Docker == nil {
+			continue
+		}
+		if len(svc.Docker.Services) > 0 {
+			if full, err := detect.ComposeServices(cwd, *svc); err == nil && coversAll(svc.Docker.Services, full) {
+				svc.Docker.Services = nil
+			}
+		}
+		// an all-default docker block adds nothing over `runtime: docker`; drop
+		// the pointer so it isn't written as an empty `docker: {}`.
+		if svc.Docker.IsZero() {
+			svc.Docker = nil
+		}
+	}
+}
+
+// coversAll reports whether subset names exactly the same set as full
+// (order-independent), i.e. the recorded list is the whole stack.
+func coversAll(subset, full []string) bool {
+	if len(full) == 0 || len(subset) != len(full) {
+		return false
+	}
+	have := make(map[string]bool, len(subset))
+	for _, s := range subset {
+		have[s] = true
+	}
+	for _, f := range full {
+		if !have[f] {
+			return false
+		}
+	}
+	return true
 }
 
 // writeConfig serializes cfg to path as YAML via the shared format writer so

@@ -27,7 +27,7 @@ func MergeService(base, overlay config.Service) config.Service {
 	out.Reload = mergeReload(base.Reload, overlay.Reload)
 	out.Env = mergeEnv(base.Env, overlay.Env)
 	out.Logging = mergeLogging(base.Logging, overlay.Logging)
-	out.Ports = dedupInts(append(append([]int{}, overlay.Ports...), base.Ports...))
+	out.Ports = dedupPorts(append(append([]config.Port{}, overlay.Ports...), base.Ports...))
 	if base.ForceShutdown == nil {
 		out.ForceShutdown = overlay.ForceShutdown
 	}
@@ -35,21 +35,25 @@ func MergeService(base, overlay config.Service) config.Service {
 	return out
 }
 
-func dedupInts(in []int) []int {
+// dedupPorts drops empty and duplicate entries, keying on the canonical string
+// form so a literal and its env reference (e.g. 8080 and PORT) are kept as
+// the distinct entries they are while exact repeats collapse.
+func dedupPorts(in []config.Port) []config.Port {
 	if len(in) == 0 {
 		return nil
 	}
-	seen := make(map[int]struct{}, len(in))
-	out := make([]int, 0, len(in))
-	for _, v := range in {
-		if v <= 0 {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]config.Port, 0, len(in))
+	for _, p := range in {
+		if p.EnvKey == "" && p.Value <= 0 {
 			continue
 		}
-		if _, ok := seen[v]; ok {
+		key := p.String()
+		if _, ok := seen[key]; ok {
 			continue
 		}
-		seen[v] = struct{}{}
-		out = append(out, v)
+		seen[key] = struct{}{}
+		out = append(out, p)
 	}
 	return out
 }

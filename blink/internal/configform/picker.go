@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
+	"unicode/utf8"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/toaweme/blink/core/config"
+	"github.com/toaweme/log"
 )
 
 // ErrCanceled is returned by PickServices when the user quits the picker
@@ -17,19 +21,30 @@ import (
 var ErrCanceled = errors.New("canceled")
 
 // PickServices runs the compact service picker: one screen listing every
-// service with a keep/drop checkbox, where enter drills into a per-service
-// editor instead of forcing every service through a wizard. It returns the
-// kept (and possibly edited) services. detectFn, when non-nil, enables the
-// re-detect key (`d`) and is called to fetch fresh services to merge by name.
-func PickServices(title string, services []config.Service, detectFn func() ([]config.Service, error)) ([]config.Service, error) {
+// service with a select checkbox, where → drills into a per-service editor
+// instead of forcing every service through a wizard and enter saves. It returns
+// the selected (and possibly edited or probed) services.
+//
+// detectFn, when non-nil, enables the re-detect key (`d`) and is called to fetch
+// fresh services to merge by name. probeFn, when non-nil, enables the runtime
+// port-discovery key (`p`): pressing it probes every selected service
+// concurrently, animating a spinner per row, and fills in the ports each one
+// bound. Probes outlive a trip into the editor (they're owned by a manager that
+// spans picker re-runs), so going in and back doesn't restart them.
+func PickServices(title string, services []config.Service, detectFn func() ([]config.Service, error), probeFn func(config.Service) ([]config.Port, error)) ([]config.Service, error) {
 	items := make([]pickItem, len(services))
 	for i, s := range services {
 		items[i] = pickItem{svc: s, keep: true}
 	}
 	cursor := 0
 
+	var probes *probeManager
+	if probeFn != nil {
+		probes = newProbeManager(probeFn)
+	}
+
 	for {
-		p := picker{title: title, items: items, cursor: cursor, allowDetect: detectFn != nil}
+		p := buildPicker(title, items, cursor, detectFn != nil, probes)
 		out, err := tea.NewProgram(p, tea.WithAltScreen()).Run()
 		if err != nil {
 			return nil, fmt.Errorf("failed to run service picker: %w", err)
@@ -83,9 +98,21 @@ func PickServices(title string, services []config.Service, detectFn func() ([]co
 	}
 }
 
+// probeState is the per-row runtime-discovery state.
+type probeState int
+
+const (
+	probeIdle probeState = iota
+	probeRunning
+	probeDone
+	probeNoPort
+	probeFailed
+)
+
 type pickItem struct {
-	svc  config.Service
-	keep bool
+	svc   config.Service
+	keep  bool
+	state probeState
 }
 
 type pickResult int
@@ -98,11 +125,95 @@ const (
 	resDetect
 )
 
-// picker is the bubbletea model for one pass over the service list. It quits as
-// soon as the user picks an action (edit/add/detect/done/cancel); the outer
-// PickServices loop performs the action and re-runs a fresh picker with the
-// updated state, so only one bubbletea program is ever live at a time (the
-// per-service editor is its own huh program).
+// probeOutcome is a finished probe's result, stored in the manager by service
+// name.
+type probeOutcome struct {
+	ports []config.Port
+	err   error
+}
+
+// probeManager owns the background probe goroutines and their results. It lives
+// across picker re-runs (a trip into the editor quits and rebuilds the picker),
+// so an in-flight probe keeps running and its result is still here when the
+// picker comes back - no restart needed. It hushes logs while any probe runs.
+type probeManager struct {
+	fn func(config.Service) ([]config.Port, error)
+
+	mu      sync.Mutex
+	running map[string]bool
+	results map[string]probeOutcome
+	active  int
+	hushed  bool
+}
+
+func newProbeManager(fn func(config.Service) ([]config.Port, error)) *probeManager {
+	return &probeManager{fn: fn, running: map[string]bool{}, results: map[string]probeOutcome{}}
+}
+
+// start launches a probe for each service not already running. Already-probed
+// services re-run (a fresh reading).
+func (pm *probeManager) start(svcs []config.Service) {
+	pm.mu.Lock()
+	var toRun []config.Service
+	for _, s := range svcs {
+		if pm.running[s.Name] {
+			continue
+		}
+		pm.running[s.Name] = true
+		pm.active++
+		toRun = append(toRun, s)
+	}
+	if pm.active > 0 && !pm.hushed {
+		hushLogs()
+		pm.hushed = true
+	}
+	pm.mu.Unlock()
+
+	for _, s := range toRun {
+		go pm.run(s)
+	}
+}
+
+func (pm *probeManager) run(svc config.Service) {
+	ports, err := pm.fn(svc)
+	pm.mu.Lock()
+	delete(pm.running, svc.Name)
+	pm.results[svc.Name] = probeOutcome{ports: ports, err: err}
+	pm.active--
+	if pm.active == 0 && pm.hushed {
+		restoreLogs()
+		pm.hushed = false
+	}
+	pm.mu.Unlock()
+}
+
+func (pm *probeManager) anyRunning() bool {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	return pm.active > 0
+}
+
+// snapshot copies the current running set and results for the renderer.
+func (pm *probeManager) snapshot() (map[string]bool, map[string]probeOutcome) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	running := make(map[string]bool, len(pm.running))
+	for k, v := range pm.running {
+		if v {
+			running[k] = true
+		}
+	}
+	results := make(map[string]probeOutcome, len(pm.results))
+	for k, v := range pm.results {
+		results[k] = v
+	}
+	return running, results
+}
+
+// picker is the bubbletea model for one pass over the service list. Probing runs
+// in the background via the manager and is reflected on each spinner tick (no
+// screen switch); edit/add/detect quit and are handled by the outer
+// PickServices loop, which re-runs a fresh picker.
 type picker struct {
 	title       string
 	items       []pickItem
@@ -111,92 +222,206 @@ type picker struct {
 	editIdx     int
 	width       int
 	allowDetect bool
+	probes      *probeManager
+	spinner     spinner.Model
+	ticking     bool
 }
 
 var _ tea.Model = picker{}
 
-func (m picker) Init() tea.Cmd { return nil }
+func buildPicker(title string, items []pickItem, cursor int, allowDetect bool, probes *probeManager) picker {
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+	m := picker{title: title, items: items, cursor: cursor, allowDetect: allowDetect, probes: probes, spinner: sp}
+	m.reconcile()
+	return m
+}
+
+func (m picker) Init() tea.Cmd {
+	if m.probes != nil && m.probes.anyRunning() {
+		return m.spinner.Tick
+	}
+	return nil
+}
 
 func (m picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		return m, nil
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "down", "j":
-			if m.cursor < len(m.items)-1 {
-				m.cursor++
-			}
-		case " ":
-			if m.cursor < len(m.items) {
-				m.items[m.cursor].keep = !m.items[m.cursor].keep
-			}
-		case "enter":
-			if len(m.items) > 0 {
-				m.result = resEdit
-				m.editIdx = m.cursor
-				return m, tea.Quit
-			}
-		case "a":
-			m.result = resAdd
-			return m, tea.Quit
-		case "d":
-			if m.allowDetect {
-				m.result = resDetect
-				return m, tea.Quit
-			}
-		case "w", "ctrl+s":
-			m.result = resDone
-			return m, tea.Quit
-		case "q", "esc", "ctrl+c":
-			m.result = resCancel
-			return m, tea.Quit
+
+	case spinner.TickMsg:
+		m.reconcile()
+		if m.probes == nil || !m.probes.anyRunning() {
+			m.ticking = false
+			return m, nil
 		}
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		m.ticking = true
+		return m, cmd
+
+	case tea.KeyMsg:
+		return m.handleKey(msg)
 	}
 	return m, nil
 }
 
-func (m picker) View() string {
-	var b strings.Builder
-	title := lipgloss.NewStyle().Foreground(lipgloss.Color("36")).Bold(true).Render(m.title)
-	kept := 0
-	for _, it := range m.items {
-		if it.keep {
-			kept++
+func (m picker) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		if m.cursor < len(m.items)-1 {
+			m.cursor++
+		}
+	case " ":
+		if m.cursor < len(m.items) {
+			m.items[m.cursor].keep = !m.items[m.cursor].keep
+		}
+	case "right", "l":
+		if len(m.items) > 0 {
+			m.result = resEdit
+			m.editIdx = m.cursor
+			return m, tea.Quit
+		}
+	case "left", "h":
+		// reserved for "back"; the per-service editor handles its own back/cancel,
+		// so at the list level there's nothing to collapse - a deliberate no-op.
+	case "p":
+		if m.probes != nil {
+			m.probes.start(m.selectedServices())
+			m.reconcile()
+			if !m.ticking {
+				m.ticking = true
+				return m, m.spinner.Tick
+			}
+		}
+	case "a":
+		m.result = resAdd
+		return m, tea.Quit
+	case "d":
+		if m.allowDetect {
+			m.result = resDetect
+			return m, tea.Quit
+		}
+	case "enter", "ctrl+s":
+		m.result = resDone
+		return m, tea.Quit
+	case "q", "esc", "ctrl+c":
+		m.result = resCancel
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+// reconcile folds the manager's current running set and results into the row
+// states (and ports), so the view reflects probes that progressed while this
+// picker was rebuilt or between ticks.
+func (m *picker) reconcile() {
+	if m.probes == nil {
+		return
+	}
+	running, results := m.probes.snapshot()
+	for i := range m.items {
+		name := m.items[i].svc.Name
+		if running[name] {
+			m.items[i].state = probeRunning
+			continue
+		}
+		out, ok := results[name]
+		if !ok {
+			continue
+		}
+		switch {
+		case out.err != nil:
+			m.items[i].state = probeFailed
+		case len(out.ports) == 0:
+			m.items[i].state = probeNoPort
+		default:
+			m.items[i].svc.Ports = out.ports
+			m.items[i].state = probeDone
 		}
 	}
-	b.WriteString(title + lipgloss.NewStyle().Foreground(lipgloss.Color("244")).
-		Render(fmt.Sprintf("  ·  %d of %d kept", kept, len(m.items))))
+}
+
+func (m picker) selectedServices() []config.Service {
+	var out []config.Service
+	for _, it := range m.items {
+		if it.keep {
+			out = append(out, it.svc)
+		}
+	}
+	return out
+}
+
+const (
+	colGap     = 2
+	rtWidth    = 8
+	cyan       = lipgloss.Color("44")
+	green      = lipgloss.Color("78")
+	dimColor   = lipgloss.Color("244")
+	faintColor = lipgloss.Color("240")
+	portColor  = lipgloss.Color("75")
+	envColor   = lipgloss.Color("180")
+)
+
+func (m picker) View() string {
+	var b strings.Builder
+
+	titleStyle := lipgloss.NewStyle().Foreground(cyan).Bold(true)
+	dim := lipgloss.NewStyle().Foreground(dimColor)
+	selected := 0
+	for _, it := range m.items {
+		if it.keep {
+			selected++
+		}
+	}
+	b.WriteString(titleStyle.Render(m.title))
+	b.WriteString(dim.Render(fmt.Sprintf("   selected %d/%d services", selected, len(m.items))))
 	b.WriteString("\n\n")
 
 	if len(m.items) == 0 {
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("244")).
-			Render("  no services - press a to add one\n"))
+		b.WriteString(dim.Render("  no services - press a to add one\n"))
+		b.WriteString("\n" + m.renderHints())
+		return b.String()
 	}
+
 	nameW := m.nameWidth()
+	cmdW := m.commandWidth(nameW)
+
+	header := lipgloss.NewStyle().Foreground(faintColor).Bold(true)
+	b.WriteString("  " + // arrow gutter (2)
+		" " + // checkbox gutter (1 glyph)
+		" " + // gap before name
+		header.Render(padRight("SERVICE", nameW)) + strings.Repeat(" ", colGap) +
+		header.Render(padRight("RUNTIME", rtWidth)) + strings.Repeat(" ", colGap) +
+		header.Render(padRight("COMMAND", cmdW)) + strings.Repeat(" ", colGap) +
+		header.Render("PORTS"))
+	b.WriteString("\n")
+
 	for i, it := range m.items {
-		b.WriteString(m.renderRow(i, it, nameW) + "\n")
+		b.WriteString(m.renderRow(i, it, nameW, cmdW) + "\n")
 	}
 
 	b.WriteString("\n" + m.renderHints())
 	return b.String()
 }
 
-func (m picker) renderRow(i int, it pickItem, nameW int) string {
-	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	cursor := "  "
+func (m picker) renderRow(i int, it pickItem, nameW, cmdW int) string {
+	dim := lipgloss.NewStyle().Foreground(dimColor)
+
+	arrow := "  "
 	if i == m.cursor {
-		cursor = lipgloss.NewStyle().Foreground(lipgloss.Color("36")).Bold(true).Render("❯ ")
+		arrow = lipgloss.NewStyle().Foreground(cyan).Bold(true).Render("❯ ")
 	}
 
-	box := dim.Render("[ ]")
+	box := dim.Render("○")
 	if it.keep {
-		box = lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render("[x]")
+		box = lipgloss.NewStyle().Foreground(green).Render("◉")
 	}
 
 	nameStyle := lipgloss.NewStyle().Bold(true)
@@ -205,57 +430,90 @@ func (m picker) renderRow(i int, it pickItem, nameW int) string {
 	}
 	name := nameStyle.Render(padRight(it.svc.Name, nameW))
 
-	rt := dim.Render(padRight(runtimeLabel(it.svc.Runtime), 7))
+	rt := dim.Render(padRight(runtimeLabel(it.svc.Runtime), rtWidth))
 
-	portStr := portList(it.svc.Ports)
-	// keep the row on one line: budget the summary against the terminal width
-	// after the fixed-width columns and the ports, so a long run command
-	// truncates with an ellipsis instead of wrapping.
-	summary := serviceSummary(it.svc)
-	if m.width > 0 {
-		used := 2 + 4 + nameW + 1 + 8 + 2 // cursor, box, name, gap, runtime, gaps
-		if portStr != "" {
-			used += len(portStr) + 2
-		}
-		summary = truncate(summary, m.width-used)
+	cmd := lipgloss.NewStyle().Foreground(faintColor).Render(padRight(truncate(serviceCommand(it.svc), cmdW), cmdW))
+
+	return fmt.Sprintf("%s%s %s%s%s%s%s%s%s",
+		arrow, box,
+		name, strings.Repeat(" ", colGap),
+		rt, strings.Repeat(" ", colGap),
+		cmd, strings.Repeat(" ", colGap),
+		m.renderPorts(it))
+}
+
+// renderPorts shows the spinner while a row is probing, the discovered ports
+// when known, and a dim dash otherwise.
+func (m picker) renderPorts(it pickItem) string {
+	dim := lipgloss.NewStyle().Foreground(dimColor)
+	switch it.state {
+	case probeRunning:
+		return m.spinner.View() + dim.Render(" scanning")
+	case probeNoPort:
+		return dim.Render("no port")
+	case probeFailed:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("131")).Render("n/a")
 	}
-
-	ports := ""
-	if portStr != "" {
-		ports = "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render(portStr)
+	if len(it.svc.Ports) == 0 {
+		return dim.Render("—")
 	}
-
-	return fmt.Sprintf("%s%s %s %s %s%s", cursor, box, name, rt, dim.Render(summary), ports)
+	return renderPortList(it.svc.Ports)
 }
 
 func (m picker) renderHints() string {
-	key := lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Bold(true)
-	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	sep := dim.Render("  ·  ")
+	key := lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Bold(true)
+	dim := lipgloss.NewStyle().Foreground(dimColor)
+	sep := dim.Render("   ")
 	hints := []string{
-		key.Render("space") + dim.Render(" keep/drop"),
-		key.Render("enter") + dim.Render(" edit"),
+		key.Render("↑↓") + dim.Render(" move"),
+		key.Render("space") + dim.Render(" select"),
+		key.Render("→") + dim.Render(" edit"),
 		key.Render("a") + dim.Render(" add"),
 	}
 	if m.allowDetect {
 		hints = append(hints, key.Render("d")+dim.Render(" re-detect"))
 	}
+	if m.probes != nil {
+		hints = append(hints, key.Render("p")+dim.Render(" probe ports"))
+	}
 	hints = append(hints,
-		key.Render("w")+dim.Render(" write"),
+		key.Render("enter")+dim.Render(" save"),
 		key.Render("q")+dim.Render(" cancel"),
 	)
 	return strings.Join(hints, sep)
 }
 
 func (m picker) nameWidth() int {
-	w := 4
+	w := len("SERVICE")
 	for _, it := range m.items {
-		if l := len(it.svc.Name); l > w {
+		if l := utf8.RuneCountInString(it.svc.Name); l > w {
 			w = l
 		}
 	}
 	if w > 24 {
 		w = 24
+	}
+	return w
+}
+
+// commandWidth hugs the widest command (capped) so the table stays tight, then
+// shrinks to the terminal's remaining budget so a row never wraps.
+func (m picker) commandWidth(nameW int) int {
+	w := len("COMMAND")
+	for _, it := range m.items {
+		if l := utf8.RuneCountInString(serviceCommand(it.svc)); l > w {
+			w = l
+		}
+	}
+	if w > 50 {
+		w = 50
+	}
+	if m.width > 0 {
+		const portsBudget = 12
+		budget := m.width - (2 + 1 + 1 + nameW + colGap + rtWidth + colGap + colGap + portsBudget)
+		if budget >= 8 && w > budget {
+			w = budget
+		}
 	}
 	return w
 }
@@ -268,19 +526,26 @@ func runtimeLabel(rt string) string {
 	return rt
 }
 
-// serviceSummary is the one-line "what does this run" shown per row.
-func serviceSummary(svc config.Service) string {
+// serviceCommand is the one-line invocation shown per row, so two services that
+// share a package (e.g. several root-package go binaries) are still told apart
+// by their args.
+func serviceCommand(svc config.Service) string {
 	switch svc.Runtime {
 	case "go":
-		if svc.Go != nil && svc.Go.Package != "" {
-			return svc.Go.Package
+		if svc.Go == nil || svc.Go.Package == "" {
+			return "go run (package unset)"
 		}
-		return "(go package unset)"
+		cmd := "go run " + svc.Go.Package
+		if len(svc.Go.Args) > 0 {
+			cmd += " " + strings.Join(svc.Go.Args, " ")
+		}
+		return cmd
 	case "docker":
+		file := config.DefaultComposeFile
 		if svc.Docker != nil && svc.Docker.File != "" {
-			return svc.Docker.File
+			file = svc.Docker.File
 		}
-		return config.DefaultComposeFile
+		return "compose up " + file
 	default:
 		if svc.Commands.Run != nil && svc.Commands.Run.Command != "" {
 			return svc.Commands.Run.Command
@@ -289,10 +554,19 @@ func serviceSummary(svc config.Service) string {
 	}
 }
 
-func portList(ports []int) string {
+// renderPortList styles a service's ports: literals as ":8080" (port colour),
+// env references as the bare var name (env colour, no colon since the value
+// isn't known here).
+func renderPortList(ports []config.Port) string {
+	lit := lipgloss.NewStyle().Foreground(portColor)
+	env := lipgloss.NewStyle().Foreground(envColor)
 	parts := make([]string, 0, len(ports))
 	for _, p := range ports {
-		parts = append(parts, ":"+strconv.Itoa(p))
+		if p.EnvKey != "" {
+			parts = append(parts, env.Render(p.EnvKey))
+			continue
+		}
+		parts = append(parts, lit.Render(":"+strconv.Itoa(p.Value)))
 	}
 	return strings.Join(parts, " ")
 }
@@ -349,11 +623,15 @@ func truncate(s string, max int) string {
 	return string(r[:max-1]) + "…"
 }
 
+// padRight pads s with spaces to a display width of n columns, measuring in
+// runes (not bytes) so multibyte content like a middle dot or em dash doesn't
+// shift the columns after it.
 func padRight(s string, n int) string {
-	if len(s) >= n {
+	w := utf8.RuneCountInString(s)
+	if w >= n {
 		return s
 	}
-	return s + strings.Repeat(" ", n-len(s))
+	return s + strings.Repeat(" ", n-w)
 }
 
 func clamp(v, lo, hi int) int {
@@ -367,4 +645,26 @@ func clamp(v, lo, hi int) int {
 		return hi
 	}
 	return v
+}
+
+var (
+	logMu   sync.Mutex
+	logPrev log.Logger
+)
+
+// hushLogs swaps the global logger for a discard one while a probe runs, so the
+// throwaway supervisor's output doesn't bleed onto the picker's alt-screen.
+func hushLogs() {
+	logMu.Lock()
+	defer logMu.Unlock()
+	logPrev = log.Default()
+	log.SetDefault(log.Discard())
+}
+
+func restoreLogs() {
+	logMu.Lock()
+	defer logMu.Unlock()
+	if logPrev != nil {
+		log.SetDefault(logPrev)
+	}
 }

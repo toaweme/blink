@@ -3,7 +3,6 @@ package configform
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -187,20 +186,24 @@ func parseCSV(s string) []string {
 
 func joinCSV(s []string) string { return strings.Join(s, ", ") }
 
-func parsePorts(s string) []int {
-	var out []int
-	for _, p := range parseCSV(s) {
-		if n, err := strconv.Atoi(p); err == nil && n > 0 {
-			out = append(out, n)
+// parsePorts reads the comma-separated ports field: a numeric entry is a literal
+// port, anything else is an env-var name. Empty entries are dropped.
+func parsePorts(s string) []config.Port {
+	var out []config.Port
+	for _, tok := range parseCSV(s) {
+		p, err := config.ParsePort(tok)
+		if err != nil {
+			continue
 		}
+		out = append(out, p)
 	}
 	return out
 }
 
-func joinPorts(ports []int) string {
+func joinPorts(ports []config.Port) string {
 	parts := make([]string, 0, len(ports))
 	for _, p := range ports {
-		parts = append(parts, strconv.Itoa(p))
+		parts = append(parts, p.String())
 	}
 	return strings.Join(parts, ", ")
 }

@@ -46,6 +46,8 @@ func Scan(dir string) (config.Config, []Detected, error) {
 		detected[i].Service.Name = name
 	}
 
+	detected = dockerFirst(detected)
+
 	cfg := config.Config{DirRoot: dir}
 	for _, d := range detected {
 		cfg.Services = append(cfg.Services, d.Service)
@@ -78,6 +80,25 @@ func dropGoAirOverlap(detected []Detected) []Detected {
 			}
 		}
 		out = append(out, d)
+	}
+	return out
+}
+
+// dockerFirst stably moves docker-runtime services to the front. Docker
+// typically runs the infrastructure (databases, queues) the app services lean
+// on, so listing it first puts it at the top of the picker and starts it ahead
+// of the apps. Relative order is otherwise preserved.
+func dockerFirst(detected []Detected) []Detected {
+	out := make([]Detected, 0, len(detected))
+	for _, d := range detected {
+		if d.Service.Runtime == "docker" {
+			out = append(out, d)
+		}
+	}
+	for _, d := range detected {
+		if d.Service.Runtime != "docker" {
+			out = append(out, d)
+		}
 	}
 	return out
 }

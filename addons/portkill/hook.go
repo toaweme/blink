@@ -36,7 +36,13 @@ func (Hook) Run(_ context.Context, _ addon.Phase, cfg config.Config, svc config.
 	if !forceShutdownEnabled(cfg, svc) || len(svc.Ports) == 0 {
 		return nil
 	}
-	pids, err := Kill(svc.Ports)
+	// resolve env-referenced ports (${PORT}) against the service env, falling
+	// back to the process environment; unresolvable references are skipped.
+	ports := config.ResolvePorts(svc.Ports, svc.Env)
+	if len(ports) == 0 {
+		return nil
+	}
+	pids, err := Kill(ports)
 	if err != nil {
 		if errors.Is(err, ErrLsofMissing) {
 			log.Warn("port reclaim skipped: lsof not installed", "service", svc.Name)
@@ -45,7 +51,7 @@ func (Hook) Run(_ context.Context, _ addon.Phase, cfg config.Config, svc config.
 		return fmt.Errorf("failed to reclaim ports for %q: %w", svc.Name, err)
 	}
 	if len(pids) > 0 {
-		log.Info("reclaimed ports", "service", svc.Name, "ports", svc.Ports, "killed", pids)
+		log.Info("reclaimed ports", "service", svc.Name, "ports", ports, "killed", pids)
 	}
 	return nil
 }

@@ -180,7 +180,7 @@ type Service struct {
 	// previous hanging child doesn't break the next run. This is project drift
 	// (the dev server is what really chooses the port), but it makes the
 	// developer experience reliable across crashes.
-	Ports []int `toml:"ports,omitempty" json:"ports,omitempty" yaml:"ports,omitempty"`
+	Ports []Port `toml:"ports,omitempty" json:"ports,omitempty" yaml:"ports,omitempty"`
 	// ForceShutdown overrides Config.ForceShutdown for this service. Nil =
 	// inherit. true = scan Ports and kill any listener before start. false =
 	// never kill, even if the project-wide setting is on.
@@ -214,6 +214,15 @@ type DockerConfig struct {
 	// startup reuses warm databases and is near-instant. Pre-existing
 	// containers (ones blink didn't start) are never touched either way.
 	StopOnExit bool `toml:"stop_on_exit,omitempty" json:"stop_on_exit,omitempty" yaml:"stop_on_exit,omitempty"`
+}
+
+// IsZero reports whether every field is its zero value. The writer uses it to
+// drop an all-default docker block: a nil *DockerConfig is omitted, but a
+// pointer to an empty struct would otherwise serialise as "docker: {}". yaml.v3
+// also honours this (IsZeroer) for omitempty.
+func (d DockerConfig) IsZero() bool {
+	return d.File == "" && d.Project == "" && len(d.Services) == 0 &&
+		len(d.Logs) == 0 && d.Wait == nil && !d.StopOnExit
 }
 
 // GoConfig configures a `runtime: go` service. The runtime synthesizes build
