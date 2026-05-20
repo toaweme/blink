@@ -249,7 +249,11 @@ func (m picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
-		return m, nil
+		// repaint over a cleared buffer: when the terminal shrinks, the old
+		// (taller/wider) frame leaves artifacts the diff renderer won't wipe on
+		// its own. This doesn't disturb an in-flight spinner tick (that chain
+		// runs on its own TickMsg cmds).
+		return m, tea.ClearScreen
 
 	case spinner.TickMsg:
 		m.reconcile()
@@ -311,7 +315,7 @@ func (m picker) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter", "ctrl+s":
 		m.result = resDone
 		return m, tea.Quit
-	case "q", "esc", "ctrl+c":
+	case "esc", "ctrl+c":
 		m.result = resCancel
 		return m, tea.Quit
 	}
@@ -478,7 +482,7 @@ func (m picker) renderHints() string {
 	}
 	hints = append(hints,
 		key.Render("enter")+dim.Render(" save"),
-		key.Render("q")+dim.Render(" cancel"),
+		key.Render("esc")+dim.Render(" cancel"),
 	)
 	return strings.Join(hints, sep)
 }

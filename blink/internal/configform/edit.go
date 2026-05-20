@@ -125,7 +125,18 @@ func editDocker(svc *config.Service, others []string) error {
 	all := svc.Docker.Services
 	stop := svc.Docker.StopOnExit
 
-	group := []huh.Field{nameField(svc, others)}
+	// the Confirm comes before the MultiSelect: a MultiSelect owns ↑/↓ for its
+	// options, so any field placed after it can't be reached with the arrow keys
+	// (only tab/enter). Keeping it last means every other field stays arrow-
+	// navigable and nothing is trapped behind it.
+	group := []huh.Field{
+		nameField(svc, others),
+		huh.NewConfirm().
+			Title("Stop containers when blink exits?").
+			Description("Keep leaves them running so the next start reuses warm databases (recommended)").
+			Affirmative("Stop").Negative("Keep").
+			Value(&stop),
+	}
 	var chosen []string
 	if len(all) > 0 {
 		chosen = append([]string{}, all...)
@@ -139,11 +150,6 @@ func editDocker(svc *config.Service, others []string) error {
 			Options(opts...).
 			Value(&chosen))
 	}
-	group = append(group, huh.NewConfirm().
-		Title("Stop containers when blink exits?").
-		Description("off keeps databases warm between runs (recommended)").
-		Affirmative("Stop").Negative("Keep").
-		Value(&stop))
 
 	if err := Run(huh.NewForm(huh.NewGroup(group...))); err != nil {
 		return abortOrErr(err, "docker")

@@ -36,6 +36,8 @@ func keyMsg(s string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyEnter}
 	case "right":
 		return tea.KeyMsg{Type: tea.KeyRight}
+	case "esc":
+		return tea.KeyMsg{Type: tea.KeyEsc}
 	default:
 		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 	}
@@ -77,8 +79,8 @@ func Test_Picker_WriteAndCancel(t *testing.T) {
 	if got := send(newPicker("a"), keyMsg("enter")).result; got != resDone {
 		t.Fatalf("enter result = %d, want resDone", got)
 	}
-	if got := send(newPicker("a"), keyMsg("q")).result; got != resCancel {
-		t.Fatalf("q result = %d, want resCancel", got)
+	if got := send(newPicker("a"), keyMsg("esc")).result; got != resCancel {
+		t.Fatalf("esc result = %d, want resCancel", got)
 	}
 	if got := send(newPicker("a"), keyMsg("a")).result; got != resAdd {
 		t.Fatalf("a result = %d, want resAdd", got)
