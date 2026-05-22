@@ -57,6 +57,7 @@ func run() error {
 	cliApp.Add("run", commandRun)
 	cliApp.Add("init", app.NewInitCommand(reg))
 	cliApp.Add("edit", app.NewEditCommand(reg))
+	cliApp.Add("nuke", app.NewNukeCommand())
 	cliApp.Default(commandRun)
 
 	if err := cliApp.Run(os.Args[1:]); err != nil {

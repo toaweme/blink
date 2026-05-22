@@ -55,7 +55,7 @@ func (p *Paths) Resolve(dirRoot string) {
 // All returns every directory path for enumeration (used by nuke).
 func (p *Paths) All() []PathEntry {
 	return []PathEntry{
-		{Path: p.ConfigHome, Description: "user-scoped config"},
+		{Path: p.ConfigHome, Description: "user-scoped config", UserScoped: true},
 		{Path: p.ControlDir, Description: "project state dir"},
 		{Path: p.LogDir, Description: "service log files"},
 	}
@@ -65,6 +65,10 @@ func (p *Paths) All() []PathEntry {
 type PathEntry struct {
 	Path        string
 	Description string
+	// UserScoped marks a path shared across every project (e.g. ~/.blink),
+	// as opposed to project-scoped state under the current directory. nuke
+	// removes user-scoped paths only when asked to wipe global state.
+	UserScoped bool
 }
 
 // Config is the top-level blink configuration loaded from blink.yaml.
