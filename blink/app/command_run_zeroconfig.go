@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -12,10 +13,9 @@ import (
 )
 
 // zeroConfig builds an ephemeral Config by scanning cwd and letting the user
-// pick which detected services to run. Nothing is written to disk; to persist
-// the detected setup the user runs `blink init` (which scans and writes). The
-// Config's paths are resolved here because the loader (which normally does it)
-// was skipped.
+// pick which detected services to run. Nothing is written to disk; `blink init`
+// persists the detected setup. Paths are resolved here because the loader that
+// normally does it was skipped.
 func zeroConfig(cwd string) (config.Config, error) {
 	cfg, detected, err := detect.Scan(cwd)
 	if err != nil {
@@ -25,8 +25,7 @@ func zeroConfig(cwd string) (config.Config, error) {
 		return config.Config{}, fmt.Errorf("no blink.yaml found and nothing detected in %s; run `blink init`", cwd)
 	}
 
-	// the picker is interactive; without a TTY (CI, piped) there's no way to
-	// choose, so surface a clear error instead of hanging on a form.
+	// the picker is interactive; without a TTY (CI, piped) error out instead of hanging on a form.
 	if !isTTY() {
 		return config.Config{}, fmt.Errorf("no blink.yaml found in %s; run `blink init` to create one", cwd)
 	}
@@ -38,7 +37,7 @@ func zeroConfig(cwd string) (config.Config, error) {
 		return config.Config{}, err
 	}
 	if len(chosen) == 0 {
-		return config.Config{}, fmt.Errorf("no services selected")
+		return config.Config{}, errors.New("no services selected")
 	}
 	cfg.Services = chosen
 	cfg.Paths.Resolve(cfg.DirRoot)

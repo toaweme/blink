@@ -5,12 +5,10 @@ import (
 	"sort"
 )
 
-// Keymap maps a key string (bubbletea's msg.String() form, e.g. "r",
-// "ctrl+c", "left") to an Action. It is the single owner of the TUI's
-// global bindings: the model resolves a keypress through Lookup, the
-// help modal renders Help(), and blink.yaml's control.keys customizes it
-// via Merge. Modal-local keys (dialog navigation, command-center scroll)
-// are not part of the Keymap - they stay context-scoped in the model.
+// Keymap maps a key string (bubbletea's msg.String() form, e.g. "r", "ctrl+c")
+// to an Action and owns the TUI's global bindings: the model resolves keypresses
+// through Lookup, the help modal renders Help(), and blink.yaml's control.keys
+// customizes it via Merge. Modal-local keys stay context-scoped in the model.
 type Keymap struct {
 	bindings map[string]Action
 }
@@ -55,10 +53,9 @@ func (k Keymap) Lookup(key string) (Action, bool) {
 	return a, ok
 }
 
-// Merge applies blink.yaml control.keys overrides onto a copy of the
-// keymap. Each override is key -> action-name. An override binding an
-// unknown action (one not in Actions()) is an error so typos fail loud
-// at load time. An empty action value unbinds the key.
+// Merge applies blink.yaml control.keys overrides onto a copy of the keymap.
+// Each override is key -> action-name. Binding an unknown action is an error so
+// typos fail at load time; an empty action value unbinds the key.
 func (k Keymap) Merge(overrides map[string]string) (Keymap, error) {
 	specs := actionSpecs()
 	out := make(map[string]Action, len(k.bindings)+len(overrides))
@@ -88,9 +85,9 @@ type HelpEntry struct {
 	Help   string
 }
 
-// Help returns one entry per bound action (catalog order), each carrying
-// the sorted keys currently bound to it. Actions with no binding are
-// omitted. Drives the help modal so it always reflects live bindings.
+// Help returns one entry per bound action in catalog order, each carrying its
+// sorted bound keys. Unbound actions are omitted. Drives the help modal so it
+// reflects live bindings.
 func (k Keymap) Help() []HelpEntry {
 	keysByAction := make(map[Action][]string)
 	for key, a := range k.bindings {

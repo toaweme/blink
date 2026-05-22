@@ -1,0 +1,267 @@
+# mend default golangci-lint config (golangci-lint v2, validated against v2.12.x).
+# Tuned for libraries/services that ship as part of the toaweme/awee-ai ecosystem.
+# Philosophy: a curated, high-signal set - every linter earns its place, noisy
+# style linters are deliberately left off. Override per-repo only with a reason.
+version: "2"
+
+run:
+  timeout: 5m                     # hard cap; bump only if a large module graph needs it
+  tests: true                     # lint test files too - they protect production behavior
+  modules-download-mode: readonly # CI must not mutate go.mod/go.sum while linting
+  allow-parallel-runners: true    # let multiple `golangci-lint run` invocations share the lock
+
+linters:
+  default: none                   # opt in explicitly; never inherit a moving default set
+  enable:
+    # correctness / bug-catching ----------------------------------------
+    - errcheck                    # unchecked errors
+    - govet                       # the standard vet analyzers
+    - ineffassign                 # assignments whose value is never read
+    - staticcheck                 # SA/ST/QF/S checks (absorbs old gosimple + stylecheck)
+    - unused                      # unused code (vars, funcs, types)
+    - bodyclose                   # response/request bodies must be closed
+    - containedctx                # context.Context stored in a struct field (anti-pattern)
+    - contextcheck                # don't pass a non-inherited ctx where a child is expected
+    - copyloopvar                 # Go 1.22+ loop-var semantics (replaces exportloopref)
+    - durationcheck               # multiplying two time.Durations (almost always a bug)
+    - errname                     # error vars named ErrXxx, error types named XxxError
+    - errorlint                   # error wrapping / comparison correctness (%w, errors.Is)
+    - fatcontext                  # context repeatedly nested/derived inside a loop
+    - gocheckcompilerdirectives   # malformed //go: directives that are silently ignored
+    - intrange                    # `for i := range n` (Go 1.22+) instead of `for i := 0; ...`
+    - loggercheck                 # balanced key/value pairs in slog/zap/logr/zerolog calls
+    - makezero                    # make([]T, len) then append (usually means you wanted len 0)
+    - mirror                      # use the byte/string "mirror" API to avoid a conversion
+    - nilerr                      # `if err != nil { return nil }` - returning nil after an error
+    - nilnil                      # returning (nil, nil) from a (T, error) signature
+    - noctx                       # HTTP requests / sql calls made without a context
+    - predeclared                 # shadowing predeclared identifiers (len, new, error, ...)
+    - reassign                    # reassigning exported package variables from another package
+    - recvcheck                   # a type mixing value and pointer receivers
+    - rowserrcheck                # sql.Rows.Err() must be checked after iterating
+    - sqlclosecheck               # sql.Rows / sql.Stmt must be closed
+    - exhaustive                  # all enum values handled in a switch
+
+    # security ----------------------------------------------------------
+    - gosec                       # common security mistakes (see settings for tuned excludes)
+
+    # tests -------------------------------------------------------------
+    - testableexamples            # Example functions that have no verifiable Output comment
+    - thelper                     # test helpers must call t.Helper()
+    - tparallel                   # correct t.Parallel() usage (e.g. capture loop vars, no mix)
+    - usetesting                  # prefer t.Setenv/t.TempDir/t.Context over os.* and context.Background
+
+    # style / readability -----------------------------------------------
+    - asasalint                   # passing []any to a variadic ...any (silently wraps in a slice)
+    - asciicheck                  # non-ASCII identifiers
+    - dogsled                     # too many blank identifiers in an assignment (x, _, _, _ := ...)
+    - dupword                     # duplicated words in comments/strings ("the the")
+    - forbidigo                   # forbidden identifiers/patterns (see settings)
+    - gocritic                    # broad diagnostic/perf/style heuristics (see settings)
+    - iface                       # redundant interfaces / unused interface methods
+    - misspell                    # common English misspellings (US locale)
+    - nolintlint                  # //nolint directives must be specific and explained
+    - perfsprint                  # faster alternatives to fmt.Sprintf for simple cases
+    - revive                      # configurable golint successor (rule set below)
+    - sloglint                    # slog call hygiene (see settings)
+    - unconvert                   # redundant type conversions
+    - usestdlibvars               # use stdlib constants (http.MethodGet, etc.) over literals
+    - wastedassign                # assignments that are always overwritten before use
+    - whitespace                  # leading/trailing whitespace in func bodies
+
+  settings:
+    errcheck:
+      check-type-assertions: true # flag `x := v.(T)` that ignores the ok value
+      check-blank: false          # allow `_ = f()` as an explicit "I'm ignoring this"
+      exclude-functions:
+        - (io.Closer).Close       # Close() in defer is conventional best-effort
+        - (*os.File).Close
+        - fmt.Fprint              # writes to *bytes.Buffer/stdout effectively never fail
+        - fmt.Fprintf
+        - fmt.Fprintln
+
+    errorlint:
+      errorf: true                # require %w (not %v/%s) when wrapping an error in Errorf
+      errorf-multi: true          # allow multiple %w in one Errorf (Go 1.20+)
+      asserts: true               # flag type assertions on errors; use errors.As
+      comparison: true            # flag == comparisons on errors; use errors.Is
+
+    exhaustive:
+      default-signifies-exhaustive: true # a `default:` case counts as handling the rest
+
+    forbidigo:
+      analyze-types: true         # resolve types so patterns match by package path, not text
+      forbid:
+        # org rule: keep source ASCII-clean so diffs/grep/terminals stay predictable
+        - pattern: '\x{2014}'     # em-dash
+          msg: "em-dash is forbidden; use ASCII hyphen, comma, colon, or split the sentence"
+        - pattern: '\x{2013}'     # en-dash
+          msg: "en-dash is forbidden; use ASCII hyphen"
+        - pattern: '^print$|^println$' # the builtins, not fmt.Print
+          msg: "use fmt or log instead of built-in print/println"
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+      disabled-checks:
+        - ifElseChain             # revive's early-return/superfluous-else cover this better
+        - hugeParam               # value-vs-pointer is a deliberate call; too noisy as a gate
+        - rangeValCopy            # ditto - copying range values is often intentional
+        - paramTypeCombine        # cosmetic (func(a, b int) vs func(a int, b int))
+        - commentedOutCode        # too many false positives on example snippets in comments
+        - whyNoLint               # nolintlint already enforces explanations
+        - unnamedResult           # named returns are a style choice, not a defect
+        - emptyStringTest         # `len(s) == 0` vs `s == ""` is a wash
+        - appendAssign            # flags valid append-to-other-slice patterns
+        - evalOrder               # noisy and frequently wrong about Go's eval guarantees
+        - octalLiteral            # 0o-prefix preference; not worth the churn
+
+    gosec:
+      excludes:
+        - G104                    # unhandled errors - errcheck owns this with better tuning
+        - G115                    # integer overflow on conversion - very false-positive heavy
+        # NOTE: G204 (subprocess from a variable) and G306 (file perms) are intentionally
+        # NOT excluded globally. Suppress them at the call site with
+        #   //nolint:gosec // <reason>
+        # so every exception is reviewed and documented (nolintlint enforces the reason).
+      config:
+        global:
+          audit: true             # enable extra audit-mode rules
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment          # struct field reordering for padding - pedantic, churny
+        - shadow                  # variable shadowing - too many false positives on err/ctx
+
+    misspell:
+      locale: US
+
+    nolintlint:
+      require-explanation: true   # //nolint must carry a `// reason`
+      require-specific: true      # //nolint:errcheck, never a bare //nolint
+      allow-unused: false         # a //nolint that suppresses nothing is an error
+
+    perfsprint:
+      int-conversion: true        # strconv.Itoa over fmt.Sprintf("%d", n)
+      err-error: true             # err.Error() over fmt.Sprintf("%s", err)
+      errorf: true                # errors.New over fmt.Errorf when there's no formatting
+      sprintf1: true              # skip Sprintf when there's a single %s of a string
+      strconcat: true             # "a"+"b" over fmt.Sprintf for plain concatenation
+
+    revive:
+      severity: warning
+      # Rules are listed explicitly: revive disables its defaults the moment you set any
+      # rule, so this is the complete authoritative set. Anything covered by another
+      # enabled linter (errname, predeclared, govet, staticcheck SA/ST) is omitted here
+      # to avoid duplicate diagnostics.
+      rules:
+        # naming & documentation (revive owns these - the matching staticcheck ST checks
+        # are disabled below, see staticcheck.checks)
+        - name: exported          # exported symbols need a doc comment starting with the name
+        - name: package-comments  # every package needs a package comment
+        - name: var-naming        # MixedCaps, initialism casing (ID/API/HTTP), no under_scores
+        - name: dot-imports       # no `import . "pkg"` (except in tests where idiomatic)
+        - name: blank-imports     # blank imports must be documented
+
+        # error handling & control flow
+        - name: context-as-argument # ctx must be the first parameter
+        - name: error-return        # error must be the last return value
+        - name: indent-error-flow   # prefer the un-indented happy path
+        - name: superfluous-else    # drop else after a branch that returns/continues
+        - name: early-return        # invert conditions to reduce nesting
+        - name: range               # simplify needless range index/value vars
+
+        # correctness
+        - name: unconditional-recursion # a function that always calls itself (stack overflow)
+        - name: defer               # risky defer usage (in a loop, return-in-defer, double recover)
+        - name: modifies-value-receiver # mutating a value receiver - the change is lost
+        - name: waitgroup-by-value  # passing sync.WaitGroup by value copies the counter
+        - name: datarace           # obvious data races (e.g. capturing a loop var in a goroutine)
+        - name: deep-exit          # os.Exit/log.Fatal outside main()/init() - bad for libraries
+        - name: bool-literal-in-expr # `x == true` and friends
+        - name: constant-logical-expr # `if x && x` / always-true conditions
+
+        # modern cleanup
+        - name: use-any            # use `any` instead of `interface{}` (Go 1.18+)
+        - name: redundant-import-alias # alias that matches the package name
+        - name: empty-block        # empty `{}` blocks
+        - name: increment-decrement # `i++` over `i += 1`
+        - name: unnecessary-stmt    # redundant break / trailing return
+        - name: var-declaration    # simplify `var x int = 0` style declarations
+        - name: unexported-return   # exported func returning an unexported type
+        - name: unused-parameter
+          disabled: true           # off: interface impls routinely have unused params
+
+    sloglint:
+      no-mixed-args: true          # don't mix key-value pairs and slog.Attr in one call
+      kv-only: false               # attrs are allowed (don't force key-value style)
+      attr-only: false             # key-value pairs are allowed (don't force attrs)
+      no-global: ""                # allow the package-level default logger
+      context: ""                  # don't require a context-carrying variant
+      static-msg: false            # allow dynamic log messages
+      key-naming-case: snake       # log keys must be snake_case (consistent ingestion)
+      args-on-sep-lines: false     # don't force one arg per line
+
+    staticcheck:
+      checks:
+        - all
+        - -ST1000                  # package comment presence - revive package-comments owns it
+        - -ST1003                  # identifier naming - revive var-naming owns it
+        - -ST1020                  # comment-on-exported wording - revive exported owns it
+        - -ST1021
+        - -ST1022
+
+  exclusions:
+    generated: lax                 # don't lint code marked as generated
+    presets:
+      - common-false-positives     # curated upstream FP exclusions
+      - legacy
+      - std-error-handling         # don't require checking errors on fmt.Print etc.
+    rules:
+      # test files: relax security/cleanup/noise rules that don't apply to test code
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+          - dupword
+          - forbidigo
+          - noctx
+      # ...but keep revive's correctness rules in tests; only silence the doc-comment
+      # requirement, which would otherwise fire on every Test/Benchmark/Example function.
+      - path: _test\.go
+        linters:
+          - revive
+        text: "should have comment|comment on exported|package comment"
+      # examples are illustrative - skip security and the full revive style pass
+      - path: examples/
+        linters:
+          - gosec
+          - forbidigo
+          - revive
+
+formatters:
+  enable:
+    - gofmt                        # canonical formatting
+    - goimports                    # gofmt + import management/grouping
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/toaweme/blink
+
+issues:
+  max-issues-per-linter: 0         # 0 = no cap; report everything (default caps hide issues)
+  max-same-issues: 0               # 0 = no cap on repeats of the same issue
+  uniq-by-line: true               # collapse multiple issues on the same line
+
+output:
+  formats:
+    text:
+      path: stdout
+      print-linter-name: true      # show which linter produced each issue
+      print-issued-lines: true     # show the offending source line
+  sort-order:
+    - file
+    - linter

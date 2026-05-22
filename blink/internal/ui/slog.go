@@ -11,8 +11,8 @@ var (
 	slogPrev log.Logger
 )
 
-// silenceSlog replaces toaweme/log's global logger with a discard one. The
-// previous logger is restored by restoreSlog().
+// silenceSlog replaces the global logger with a discard one; restoreSlog
+// restores the previous logger.
 func silenceSlog() {
 	slogMu.Lock()
 	defer slogMu.Unlock()

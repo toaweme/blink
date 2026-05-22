@@ -1,6 +1,6 @@
-// Package configform owns the interactive forms behind zero-config
-// `blink run`: the detected-services picker. It reads and writes the
-// config.Config struct directly.
+// Package configform owns the interactive forms behind blink init, edit, and
+// zero-config run: the service picker and per-runtime editors. It reads and
+// writes the config.Config struct directly.
 package configform
 
 import (
@@ -13,9 +13,9 @@ import (
 	"github.com/toaweme/blink/core/config/detect"
 )
 
-// PickDetected shows a pre-checked multiselect of detected services and
-// returns the ones the user keeps. Every entry starts selected, so hitting
-// enter keeps everything. Returns (nil, nil) when the user cancels (esc).
+// PickDetected shows a pre-checked multiselect of detected services and returns
+// the ones the user keeps. Every entry starts selected, so enter keeps
+// everything. Returns (nil, nil) when the user cancels (esc).
 func PickDetected(detected []detect.Detected) ([]config.Service, error) {
 	if len(detected) == 0 {
 		return nil, nil

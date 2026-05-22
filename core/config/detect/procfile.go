@@ -10,7 +10,7 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
-// procfileDetector recognises a Procfile and emits one shell-runtime service
+// procfileDetector recognizes a Procfile and emits one shell-runtime service
 // per `name: command` line, mirroring the Foreman/Heroku process model.
 type procfileDetector struct{}
 

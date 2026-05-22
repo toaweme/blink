@@ -6,15 +6,13 @@ import "github.com/toaweme/blink/core/config"
 //
 // Rules:
 //   - Scalars (strings, bools): user (base) wins if non-zero; overlay otherwise.
-//   - Pointer structs (*Command): recurse field-by-field; if one side is nil,
-//     take the other.
-//   - Slices: append(overlay, base...) so runtime-provided defaults come first
-//     and user additions are preserved.
+//   - Pointer structs (*Command): recurse field-by-field; if one side is nil, take the other.
+//   - Slices: append(overlay, base...) so runtime-provided defaults come first and user additions are preserved.
 //   - Maps (Env): overlay seeds the map; user keys override on conflict.
 //   - Nested structs (Fs, Reload, Commands, Logging): recurse.
 //
-// Name, Dir and Runtime are sourced from base - the user always names and
-// places their own service, even when a runtime is involved.
+// Name, Dir and Runtime come from base: the user always names and places their
+// own service, even when a runtime is involved.
 func MergeService(base, overlay config.Service) config.Service {
 	out := base
 

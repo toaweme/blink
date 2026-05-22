@@ -9,14 +9,14 @@ import (
 
 // seed builds a model with one service tab carrying n lines and the active
 // tab set to that service.
-func seed(t *testing.T, n int) Model {
+func seed(t *testing.T, n int) *Model {
 	t.Helper()
 	m := NewModel([]string{"web"}, nil)
 	m.active = 1 // tabs = [all, web]
 	if m.activeTab() != "web" {
 		t.Fatalf("active tab = %q, want web", m.activeTab())
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		m.appendLine("web", "line"+itoa(i))
 	}
 	return m

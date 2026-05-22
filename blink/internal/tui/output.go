@@ -17,10 +17,9 @@ type StatusMsg struct {
 	Err     error
 }
 
-// WatchStatsMsg carries file + directory counts both in aggregate and
-// per-service. The host CLI polls the supervisor and pushes this in on
-// a slow cadence; the footer renders the totals on the all-tab and the
-// per-service entry on a service tab.
+// WatchStatsMsg carries file and directory counts, both aggregate and
+// per-service. Polled from the supervisor on a slow cadence; the footer renders
+// the totals on the all-tab and the per-service entry on a service tab.
 type WatchStatsMsg struct {
 	Files  int
 	Dirs   int

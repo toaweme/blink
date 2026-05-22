@@ -1,6 +1,8 @@
+// Package loader reads and resolves a blink config file into a Config.
 package loader
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -74,13 +76,13 @@ func Discover(start string) (string, error) {
 // Validate checks structural invariants the supervisor relies on.
 func Validate(cfg config.Config) error {
 	if len(cfg.Services) == 0 {
-		return fmt.Errorf("no services defined")
+		return errors.New("no services defined")
 	}
 
 	seen := make(map[string]struct{}, len(cfg.Services))
 	for _, s := range cfg.Services {
 		if s.Name == "" {
-			return fmt.Errorf("service with empty name")
+			return errors.New("service with empty name")
 		}
 		if _, dup := seen[s.Name]; dup {
 			return fmt.Errorf("duplicate service name: %s", s.Name)

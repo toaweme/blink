@@ -76,7 +76,7 @@ func Test_AddRecursive_NoDoubleCount(t *testing.T) {
 	w, err := New(cfg, svc)
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	require.NoError(t, w.Start(ctx))
 

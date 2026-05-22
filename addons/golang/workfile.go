@@ -7,9 +7,7 @@ import (
 	"strings"
 )
 
-// readWorkUses parses a go.work file and returns the list of paths declared
-// under `use (...)` or `use <path>`. Paths are returned as written - caller
-// resolves them against the workfile directory.
+// readWorkUses parses a go.work file and returns the paths declared under `use (...)` or `use <path>`. Paths are returned as written; the caller resolves them against the workfile directory.
 func readWorkUses(path string) ([]string, error) {
 	f, err := os.Open(path)
 	if err != nil {

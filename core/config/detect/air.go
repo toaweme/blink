@@ -13,19 +13,14 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
-// airDetector recognises cosmtrek/air config files. A directory often holds
-// more than one (.air.toml, .air.registry.toml, .air.slack.toml, ...), each
-// describing a separate process, so every matching file becomes its own
-// service. blink owns the watch+restart loop air would normally run, so the
-// air build/run commands are ported and reload is enabled.
+// airDetector recognizes cosmtrek/air config files. A directory may hold more
+// than one (.air.toml, .air.registry.toml, ...), each describing a separate
+// process, so every matching file becomes its own service with reload enabled.
 //
-// When air's `cmd` is a recognisable `go build` (the common case - air is
-// overwhelmingly used for Go), the service is emitted as a native `go` runtime:
-// the package comes from the build command (cd-aware), the subcommand/flags
-// from args_bin. That folds air services into the same go-runtime shape as
-// main()-package detection, so the final list is uniform and gets go.work
-// workspace watching for free. Anything blink can't read as a go build (make,
-// npm, ...) falls back to a faithful shell service.
+// When air's `cmd` is a recognizable `go build`, the service is emitted as a
+// native `go` runtime (package from the build command, args from args_bin) so
+// it gets go.work workspace watching. Any other command falls back to a shell
+// service.
 type airDetector struct{}
 
 var _ Detector = airDetector{}
@@ -46,9 +41,8 @@ type airBuild struct {
 	ArgsBin    []string `toml:"args_bin"`
 	IncludeExt []string `toml:"include_ext"`
 	ExcludeDir []string `toml:"exclude_dir"`
-	// ExcludeRegex is parsed so the field is documented, but deliberately not
-	// mapped: blink's Fs.Exclude is glob-matched, not regex-matched, so a
-	// regex can't be carried across faithfully. See excludeGlobs.
+	// ExcludeRegex is parsed but not mapped: blink's Fs.Exclude is glob-matched,
+	// not regex-matched, so a regex cannot be carried across. See excludeGlobs.
 	ExcludeRegex []string `toml:"exclude_regex"`
 }
 
@@ -83,15 +77,12 @@ func (airDetector) Detect(dir string) ([]Detected, error) {
 
 		label := name + " (air)"
 		if pkg, ok := parseGoBuild(ac.Build.Cmd); ok {
-			// native go runtime: blink builds+runs the package and watches the
-			// go.work workspace. The subcommand/flags air passed to the binary
-			// become the go runtime's args.
+			// native go runtime: args_bin becomes the go runtime's args.
 			svc.Runtime = "go"
 			svc.Go = &config.GoConfig{Package: pkg, Args: ac.Build.ArgsBin}
 			label = name + " (air · go " + pkg + ")"
 		} else {
-			// not a go build (make, npm, ...): keep air's exact build+run as a
-			// shell service.
+			// not a go build: keep air's exact build+run as a shell service.
 			svc.Runtime = "shell"
 			if ac.Build.Cmd != "" {
 				svc.Commands.Build = &config.Command{Command: ac.Build.Cmd}
@@ -112,11 +103,9 @@ func (airDetector) Detect(dir string) ([]Detected, error) {
 }
 
 // parseGoBuild extracts the Go package path from an air `cmd`, returning it as
-// a root-relative path ("." or "./cmd/v2/registry") and ok=false when the
-// command isn't a recognisable `go build` (make, npm, a script, ...), so the
-// caller falls back to a shell service. It handles a leading `cd <dir> &&`
-// (common when a submodule has its own go.mod) by resolving the package
-// relative to that dir, so the build still runs from the project root.
+// a root-relative path ("." or "./cmd/v2/registry"). ok is false when the
+// command is not a recognizable `go build`. A leading `cd <dir> &&` is handled
+// by resolving the package relative to that dir.
 func parseGoBuild(cmd string) (string, bool) {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {
@@ -146,8 +135,8 @@ func parseGoBuild(cmd string) (string, bool) {
 }
 
 // goBuildPackage pulls the package argument out of a `go build ...` segment: the
-// last non-flag token, skipping the `-o <out>` pair. Defaults to "." (build the
-// current directory) when no explicit package is given.
+// last non-flag token, skipping the `-o <out>` pair. Defaults to "." when no
+// explicit package is given.
 func goBuildPackage(build string) (string, bool) {
 	idx := strings.Index(build, "go build")
 	if idx < 0 {
@@ -211,11 +200,8 @@ func airRunCommand(b airBuild) string {
 }
 
 // excludeGlobs converts air's exclude_dir names into blink's path-glob
-// convention. blink matches Fs.Exclude against the full path, where a bare
-// "tmp" matches nothing, so each name becomes "**/<name>/**" to exclude that
-// directory anywhere in the tree. Entries blink already excludes by default
-// are dropped: a default "**/<dir>/**" matches that dir at any depth, so both
-// a bare "node_modules" and a nested "ui/node_modules" are redundant.
+// convention: each name becomes "**/<name>/**" to exclude that directory
+// anywhere in the tree. Entries blink already excludes by default are dropped.
 func excludeGlobs(dirs []string) []string {
 	if len(dirs) == 0 {
 		return nil

@@ -16,11 +16,13 @@ import (
 	"github.com/toaweme/blink/core/config/format"
 )
 
+// InitConfig holds the flags the init command accepts.
 type InitConfig struct {
 	Path  string `arg:"path"  short:"p" env:"BLINK_INIT_PATH"  default:"blink.yaml" help:"Output path."`
 	Force bool   `arg:"force" short:"f" env:"BLINK_INIT_FORCE"                     help:"Overwrite an existing file."`
 }
 
+// InitCommand scans the project and interactively creates a new blink.yaml.
 type InitCommand struct {
 	cli.BaseCommand[InitConfig]
 	reg *addon.Registry
@@ -28,12 +30,14 @@ type InitCommand struct {
 
 var _ cli.Command[InitConfig] = (*InitCommand)(nil)
 
-// NewInitCommand builds the init command. reg supplies the runtimes used by the
-// picker's port-probe key, which spins a service up to observe its real ports.
+// NewInitCommand builds the init command using reg for the picker's port-probe
+// key, which spins a service up to observe its real ports.
 func NewInitCommand(reg *addon.Registry) *InitCommand {
 	return &InitCommand{BaseCommand: cli.NewBaseCommand[InitConfig](), reg: reg}
 }
 
+// Run scans the project, runs the interactive picker, and writes the selected
+// services to a new blink.yaml.
 func (c *InitCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
 	target := c.Inputs.Path
 	if !filepath.IsAbs(target) {
@@ -49,7 +53,7 @@ func (c *InitCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
 		return err
 	}
 
-	// cancel any probe still running in the background when init returns.
+	// cancel any background probe still running when init returns.
 	probeCtx, cancelProbes := context.WithCancel(context.Background())
 	defer cancelProbes()
 	probeFn := func(svc config.Service) ([]config.Port, error) {
@@ -90,10 +94,10 @@ func scanServices(cwd string) ([]config.Service, error) {
 		services = append(services, d.Service)
 	}
 
-	// Only sniff ports from a .env that belongs to a single service's own
-	// directory. When several services share a dir (a monorepo where every
-	// service runs from the root), that dir's .env can't be attributed to one
-	// of them, so attaching its ports would tag them all identically.
+	// only sniff ports from a .env that belongs to a single service's own
+	// directory. When several services share a dir (e.g. all running from the
+	// monorepo root), that dir's .env can't be attributed to one of them, so its
+	// ports would tag them all identically.
 	dirCount := make(map[string]int, len(services))
 	for _, s := range services {
 		dirCount[s.Dir]++
@@ -107,12 +111,11 @@ func scanServices(cwd string) ([]config.Service, error) {
 }
 
 // trimWriteDefaults drops config that merely echoes what blink would detect
-// anyway, so a default selection produces a minimal blink.yaml. Currently: a
-// docker service whose recorded Services cover the whole compose file - an empty
-// list already means "run the entire stack", so naming every container adds
-// nothing (the same reasoning the detector uses to omit a default compose
-// filename). A genuine hand-authored subset is shorter than the full set and is
-// left untouched.
+// anyway, so a default selection produces a minimal blink.yaml. Currently it
+// clears a docker service whose recorded Services cover the whole compose file:
+// an empty list already means "run the entire stack", so naming every container
+// adds nothing. A genuine hand-authored subset is shorter than the full set and
+// is left untouched.
 func trimWriteDefaults(cwd string, cfg *config.Config) {
 	for i := range cfg.Services {
 		svc := &cfg.Services[i]
@@ -124,16 +127,16 @@ func trimWriteDefaults(cwd string, cfg *config.Config) {
 				svc.Docker.Services = nil
 			}
 		}
-		// an all-default docker block adds nothing over `runtime: docker`; drop
-		// the pointer so it isn't written as an empty `docker: {}`.
+		// an all-default docker block adds nothing over `runtime: docker`; drop the
+		// pointer so it isn't written as an empty `docker: {}`.
 		if svc.Docker.IsZero() {
 			svc.Docker = nil
 		}
 	}
 }
 
-// coversAll reports whether subset names exactly the same set as full
-// (order-independent), i.e. the recorded list is the whole stack.
+// coversAll reports whether subset names exactly the same set as full,
+// order-independent (the recorded list is the whole stack).
 func coversAll(subset, full []string) bool {
 	if len(full) == 0 || len(subset) != len(full) {
 		return false
@@ -151,8 +154,7 @@ func coversAll(subset, full []string) bool {
 }
 
 // writeConfig serializes cfg to path as YAML via the shared format writer so
-// init and edit produce identical output (inline extension arrays, omitted
-// transient fields).
+// init and edit produce identical output.
 func writeConfig(path string, cfg config.Config) error {
 	cfg.Runtime = config.RuntimeOptions{}
 	if err := format.NewWriter(path).Write(cfg, format.FormatYAML); err != nil {
@@ -161,8 +163,10 @@ func writeConfig(path string, cfg config.Config) error {
 	return nil
 }
 
+// Validate reports whether the parsed flags are valid.
 func (c *InitCommand) Validate(_ map[string]any) error { return nil }
 
+// Help returns the one-line description shown in the command list.
 func (c *InitCommand) Help() string {
 	return "Scan the project and interactively create a blink.yaml in the current directory."
 }

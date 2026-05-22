@@ -7,9 +7,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// humanizeKey renders a bubbletea key string for display: the space key
-// stringifies to " ", which would be invisible in the help modal, and the
-// shift+arrow combos read better with glyphs.
+// humanizeKey renders a bubbletea key string for display: " " becomes "space"
+// and the shift+arrow combos use glyphs.
 func humanizeKey(k string) string {
 	switch k {
 	case " ":
@@ -23,10 +22,9 @@ func humanizeKey(k string) string {
 	}
 }
 
-// renderHelpDialog renders the keyboard reference modal. Bindings are
-// rendered live from the active keymap so blink.yaml control.keys
-// overrides are reflected automatically.
-func (m Model) renderHelpDialog() string {
+// renderHelpDialog renders the keyboard reference modal. Bindings are rendered
+// live from the active keymap so blink.yaml control.keys overrides are reflected.
+func (m *Model) renderHelpDialog() string {
 	titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("36")).Bold(true)
 	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 
@@ -69,15 +67,15 @@ func (m Model) renderHelpDialog() string {
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }
 
-func (m Model) renderHelpKeyboard() string {
+func (m *Model) renderHelpKeyboard() string {
 	title := lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Bold(true)
 	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
 	desc := lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
 
 	pair := func(k, d string) string { return "  " + padRight(keyStyle.Render(k), 22) + desc.Render(d) }
 
-	// Bindings are rendered live from the active keymap so blink.yaml
-	// control.keys overrides are reflected here automatically.
+	// bindings are rendered live from the active keymap so control.keys overrides
+	// are reflected.
 	lines := []string{title.Render("bindings")}
 	for _, e := range m.keymap.Help() {
 		keys := make([]string, len(e.Keys))
@@ -87,7 +85,7 @@ func (m Model) renderHelpKeyboard() string {
 		lines = append(lines, pair(strings.Join(keys, " / "), e.Help))
 	}
 
-	// Fixed keys that are not part of the rebindable keymap.
+	// fixed keys not part of the rebindable keymap.
 	lines = append(lines,
 		"",
 		title.Render("navigation (fixed)"),

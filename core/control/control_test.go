@@ -113,7 +113,7 @@ func TestDecodeResultWrongKind(t *testing.T) {
 
 func TestDispatcherNotImplemented(t *testing.T) {
 	d := NewDispatcher()
-	res := d.Dispatch(context.Background(), List{}, RoleAdmin)
+	res := d.Dispatch(t.Context(), List{}, RoleAdmin)
 	assert.False(t, res.Ok)
 	assert.Contains(t, res.Error, VerbList)
 	assert.Contains(t, res.Error, "not yet implemented")
@@ -132,7 +132,7 @@ func TestDispatcherRoutesToHandler(t *testing.T) {
 	})
 
 	in := Restart{Service: "api"}
-	res := d.Dispatch(context.Background(), in, RoleOperator)
+	res := d.Dispatch(t.Context(), in, RoleOperator)
 	assert.True(t, res.Ok)
 	assert.Equal(t, in, seen)
 }
@@ -144,7 +144,7 @@ func TestDispatcherDeniesBelowRequiredRole(t *testing.T) {
 		called = true
 		return Result{Ok: true}
 	})
-	res := d.Dispatch(context.Background(), Restart{Service: "api"}, RoleViewer)
+	res := d.Dispatch(t.Context(), Restart{Service: "api"}, RoleViewer)
 	assert.False(t, called)
 	assert.False(t, res.Ok)
 	assert.Contains(t, res.Error, "requires role operator")
@@ -157,7 +157,7 @@ func TestDispatcherStampsRoleInContext(t *testing.T) {
 		got = RoleFromContext(ctx)
 		return Result{Ok: true}
 	})
-	d.Dispatch(context.Background(), List{}, RoleAdmin)
+	d.Dispatch(t.Context(), List{}, RoleAdmin)
 	assert.Equal(t, RoleAdmin, got)
 }
 

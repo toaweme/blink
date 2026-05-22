@@ -1,6 +1,4 @@
-// Package docker is the docker-compose runtime. It runs the configured
-// compose stack detached, watches container state via `docker events` (no
-// polling), and streams every container's logs into the UI by default.
+// Package docker is the docker-compose runtime. It runs the compose stack detached, watches container state via `docker events`, and streams every container's logs into the UI by default.
 package docker
 
 import (
@@ -10,12 +8,15 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
+// Runtime is the docker-compose runtime that runs services as a compose stack.
 type Runtime struct{}
 
 var _ addon.Runtime = Runtime{}
 
+// Name returns the runtime identifier.
 func (Runtime) Name() string { return "docker" }
 
+// Prepare builds the addon plan that drives the compose stack for the service.
 func (r Runtime) Prepare(cfg config.Config, svc config.Service) (addon.Plan, error) {
 	dc := svc.Docker
 	if dc == nil {
@@ -53,8 +54,7 @@ func (r Runtime) Prepare(cfg config.Config, svc config.Service) (addon.Plan, err
 	})
 
 	return addon.Plan{
-		// Docker doesn't restart on file changes - it's managed end-to-end by
-		// the compose manager. Watchers default off here.
+		// docker is managed end-to-end by the compose manager, so file-change reload defaults off.
 		Defaults: config.Service{Reload: config.Reload{Reload: false}},
 		Manager:  mgr,
 	}, nil

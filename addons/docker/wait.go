@@ -11,14 +11,7 @@ import (
 	"github.com/toaweme/log"
 )
 
-// waitForPublishedPorts blocks until every TCP port published by the compose
-// stack accepts a connection. This complements `docker compose up --wait`
-// which only blocks on containers that declare a healthcheck - for images
-// like stock mysql/postgres without healthchecks, the container is "running"
-// long before the daemon inside starts accepting connections.
-//
-// Ports are dialed in parallel with exponential backoff. The function returns
-// as soon as every port is reachable, or when the context cancels.
+// waitForPublishedPorts blocks until every TCP port published by the compose stack accepts a connection. It complements `docker compose up --wait`, which only blocks on containers that declare a healthcheck: images without one (stock mysql/postgres) report "running" before the daemon inside accepts connections. Ports are dialed in parallel with exponential backoff; returns once every port is reachable or the context cancels.
 func (m *Manager) waitForPublishedPorts(ctx context.Context) error {
 	rows, err := m.composeRows(ctx)
 	if err != nil {
@@ -52,8 +45,7 @@ func (m *Manager) waitForPublishedPorts(ctx context.Context) error {
 	return nil
 }
 
-// collectAddrs returns the host:port list to probe. If serviceFilter is
-// non-empty, only services in that set are included.
+// collectAddrs returns the host:port list to probe. A non-empty serviceFilter limits it to services in that set.
 func collectAddrs(rows []composePsRow, serviceFilter []string) []string {
 	want := make(map[string]struct{}, len(serviceFilter))
 	for _, s := range serviceFilter {
@@ -90,10 +82,7 @@ func collectAddrs(rows []composePsRow, serviceFilter []string) []string {
 	return addrs
 }
 
-// dialUntilReady opens TCP connections to addr with exponential backoff until
-// one succeeds or ctx cancels. Backoff caps at 2s - the loop exits as soon as
-// the port answers, so the wait is bounded by the service's actual boot time,
-// not a hardcoded timeout.
+// dialUntilReady opens TCP connections to addr with exponential backoff (capped at 2s) until one succeeds or ctx cancels. The wait is bounded by the service's actual boot time, not a fixed timeout.
 func dialUntilReady(ctx context.Context, addr string) error {
 	backoff := 100 * time.Millisecond
 	const maxBackoff = 2 * time.Second

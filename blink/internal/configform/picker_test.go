@@ -89,7 +89,7 @@ func Test_Picker_WriteAndCancel(t *testing.T) {
 
 func waitUntil(t *testing.T, cond func() bool) {
 	t.Helper()
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		if cond() {
 			return
 		}

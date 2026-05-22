@@ -12,13 +12,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// cursor model: a single-line park on the active tab. ↑/↓ moves it,
-// esc clears it, click jumps it. Multi-line selection is the selection
-// dialog's job - open it with enter and grow the range there.
+// cursor model: a single-line park on the active tab. ↑/↓ moves it, esc clears
+// it, click jumps it.
 
-// ensureCursor seeds a cursor for the active tab if none exists. The
-// fresh state parks the cursor on the tail line so it doesn't surprise
-// the user by parking on the top.
+// ensureCursor seeds a cursor for the active tab if none exists, parking it on
+// the tail line.
 func (m *Model) ensureCursor() {
 	if m.tabCursor == nil {
 		m.tabCursor = map[string]int{}
@@ -35,9 +33,9 @@ func (m *Model) ensureCursor() {
 	m.tabCursor[tab] = idx
 }
 
-// cursorAt returns the current line index for the active tab, or -1
-// if the tab has no cursor yet.
-func (m Model) cursorAt() int {
+// cursorAt returns the current line index for the active tab, or -1 if the tab
+// has no cursor yet.
+func (m *Model) cursorAt() int {
 	if m.tabCursor == nil {
 		return -1
 	}
@@ -67,14 +65,6 @@ func (m *Model) moveCursor(delta int) {
 	m.scrollCursorIntoView()
 }
 
-// clearCursor drops the cursor on the active tab.
-func (m *Model) clearCursor() {
-	if m.tabCursor == nil {
-		return
-	}
-	delete(m.tabCursor, m.viewKey())
-}
-
 // jumpCursorTo moves the cursor to idx. Used by mouse click.
 func (m *Model) jumpCursorTo(idx int) {
 	m.ensureCursor()
@@ -93,9 +83,9 @@ func (m *Model) jumpCursorTo(idx int) {
 	m.scrollCursorIntoView()
 }
 
-// scrollCursorIntoView snaps the viewport so the cursor row stays
-// visible after a moveCursor. Uses the wrappedToBuffer mapping built by
-// the last render, so callers should refreshViewport first.
+// scrollCursorIntoView snaps the viewport so the cursor row stays visible after
+// a moveCursor. Uses the wrappedToBuffer mapping from the last render, so callers
+// should refreshViewport first.
 func (m *Model) scrollCursorIntoView() {
 	if !m.ready {
 		return
@@ -124,10 +114,8 @@ func (m *Model) scrollCursorIntoView() {
 	m.followTail = m.vp.AtBottom()
 }
 
-// toggleCursorMode enters/exits cursor mode. Entering anchors the cursor on a
-// currently visible line (so it tracks where the user scrolled to, not a stale
-// parked position) and scrolls it into view; exiting clears the selection so it
-// doesn't linger invisibly.
+// toggleCursorMode enters or exits cursor mode. Entering anchors the cursor on a
+// visible line and scrolls it into view; exiting clears the selection.
 func (m *Model) toggleCursorMode() {
 	m.cursorMode = !m.cursorMode
 	if m.cursorMode {
@@ -139,13 +127,11 @@ func (m *Model) toggleCursorMode() {
 	m.clearSelection()
 }
 
-// clampCursorToViewport pulls the cursor onto a line that is currently on
-// screen. Used only when entering cursor mode: after scrolling away in scroll
-// mode the parked cursor can sit far outside the viewport, and seeding the
-// cursor there would yank the view back to that stale line. Snapping it to the
-// nearest visible line keeps the cursor where the user is actually looking. It
-// is deliberately NOT called on per-line moves - doing so makes a single ↑/↓
-// jump by two lines (snap + move).
+// clampCursorToViewport pulls the cursor onto a currently visible line. Used
+// only when entering cursor mode: the parked cursor can sit far outside the
+// viewport, and seeding it there would yank the view back to a stale line.
+// Deliberately not called on per-line moves, which would make a single ↑/↓ jump
+// two lines (snap plus move).
 func (m *Model) clampCursorToViewport() {
 	if !m.ready || len(m.wrappedToBuffer) == 0 {
 		return
@@ -180,8 +166,8 @@ func (m *Model) clampCursorToViewport() {
 	}
 }
 
-// escapeCursor is the esc key: collapse the selection first, then exit cursor
-// mode on a second press.
+// escapeCursor is the esc key: clear the selection first, then exit cursor mode
+// on a second press.
 func (m *Model) escapeCursor() {
 	if m.hasSelection() {
 		m.clearSelection()
@@ -190,8 +176,8 @@ func (m *Model) escapeCursor() {
 	m.cursorMode = false
 }
 
-// enterCursorMode lazily turns cursor mode on, used by the selection keys so
-// they work straight from scroll mode.
+// enterCursorMode lazily turns cursor mode on, so the selection keys work
+// straight from scroll mode.
 func (m *Model) enterCursorMode() {
 	if !m.cursorMode {
 		m.cursorMode = true
@@ -200,7 +186,7 @@ func (m *Model) enterCursorMode() {
 	}
 }
 
-func (m Model) hasSelection() bool { return len(m.selected[m.viewKey()]) > 0 }
+func (m *Model) hasSelection() bool { return len(m.selected[m.viewKey()]) > 0 }
 
 func (m *Model) clearSelection() {
 	delete(m.selected, m.viewKey())
@@ -232,12 +218,10 @@ func (m *Model) toggleSelect() {
 }
 
 // extendSelection grows or shrinks the selection with shift+↑/↓. It is
-// stateless - there is no stored anchor or range, only the current set of
-// selected rows. Each press flips exactly one line: the selection trails the
-// cursor. Moving onto a fresh (unselected) line is extending, so the line the
-// cursor leaves is selected and the cursor advances onto an unselected line.
-// Moving onto an already-selected line is retreating, so that line is dropped
-// as the cursor steps back onto it. Bound to shift+↑/↓.
+// stateless: no anchor or range, only the current set of selected rows. Each
+// press flips one line so the selection trails the cursor: moving onto an
+// unselected line extends (the line left behind is selected); moving onto a
+// selected line retreats (that line is dropped).
 func (m *Model) extendSelection(delta int) {
 	m.enterCursorMode()
 	tab := m.viewKey()
@@ -250,17 +234,17 @@ func (m *Model) extendSelection(delta int) {
 		return // at a buffer edge: no line to move onto
 	}
 	if m.selected[tab][dest] {
-		// retreating: drop the row we step back onto.
+		// retreating: drop the row stepped back onto.
 		m.setSelected(dest, false)
 	} else {
-		// extending: select the row we leave; the cursor advances onto a fresh row.
+		// extending: select the row left behind.
 		m.setSelected(c, true)
 	}
 	m.moveCursor(delta) // lands on dest and scrolls it into view
 }
 
 // selectionIndices returns the active tab's selected buffer indices, sorted.
-func (m Model) selectionIndices() []int {
+func (m *Model) selectionIndices() []int {
 	set := m.selected[m.viewKey()]
 	if len(set) == 0 {
 		return nil
@@ -274,8 +258,8 @@ func (m Model) selectionIndices() []int {
 }
 
 // linesAt returns the stripped text of the given buffer indices on the active
-// tab, skipping any out-of-range index.
-func (m Model) linesAt(idxs []int) []string {
+// tab, skipping out-of-range indices.
+func (m *Model) linesAt(idxs []int) []string {
 	buf := m.buffers[m.viewKey()]
 	out := make([]string, 0, len(idxs))
 	for _, i := range idxs {
@@ -314,16 +298,11 @@ func (m *Model) copySelection() {
 	m.setFlash(fmt.Sprintf("COPIED %d", len(lines)), "82")
 }
 
-// writeSelection (bound to `w`) replaces <logDir>/<tab>.selected.log with the
-// current selection, and appendSelection (bound to `a`) adds the selection to
-// whatever is already there. `w` is the common case: the file is a fresh
-// handoff of "here's the evidence right now" - for a coding agent reading it
-// locally, or as the clipboard copy a remote peer pastes into chat. `a` is the
-// opt-in accumulator for assembling several captures across one investigation.
-//
-// Both keep the selection and cursor afterwards so a wrong pick is a quick
-// fix: toggle the offending line and press `w` again (rewrite is idempotent),
-// rather than re-selecting from scratch. Clear it explicitly with esc.
+// writeSelection (bound to w) replaces <logDir>/<tab>.selected.log with the
+// current selection; appendSelection (bound to a) adds to whatever is already
+// there. Both keep the selection and cursor afterwards so a wrong pick is a
+// quick fix (toggle the line and write again; rewrite is idempotent). Clear it
+// with esc.
 func (m *Model) writeSelection()  { m.emitSelection(false) }
 func (m *Model) appendSelection() { m.emitSelection(true) }
 
@@ -344,24 +323,18 @@ func (m *Model) emitSelection(appendMode bool) {
 			m.setFlash(fmt.Sprintf("%s %d", verb, len(lines)), "44")
 		}
 	}
-	// clipboard is a bonus (and the only sink for a remote mirror with no
-	// logDir); the file write is the contract.
+	// clipboard is a bonus; the file write is the contract.
 	_ = clipboard.WriteAll(strings.Join(lines, "\n"))
 }
 
-func (m Model) feedbackOK(s string) string {
-	return lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render(s)
-}
-
-func (m Model) feedbackErr(s string) string {
+func (m *Model) feedbackErr(s string) string {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render(s)
 }
 
 // writeSelectedLog writes lines to <logDir>/<tab>.selected.log, creating the
-// directory and file as needed. In rewrite mode the file is truncated to hold
-// exactly the selection (clean evidence for whoever reads it). In append mode
-// the lines are added after a one-line header so successive captures stay
-// visually separable.
+// directory and file as needed. Rewrite mode truncates the file to hold exactly
+// the selection; append mode adds the lines after a one-line header so
+// successive captures stay separable.
 func writeSelectedLog(logDir, tab string, lines []string, appendMode bool) error {
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create log dir %q: %w", logDir, err)

@@ -6,19 +6,19 @@ import (
 	"os"
 	"sync"
 
+	"github.com/toaweme/log"
+
 	"github.com/toaweme/blink/core/addon"
 	"github.com/toaweme/blink/core/config"
 	"github.com/toaweme/blink/core/output"
 	"github.com/toaweme/blink/core/supervisor"
-	"github.com/toaweme/log"
 )
 
-// Headless supervises services with no terminal rendering at all. It is
-// the `-u headless` / `UI: none` mode: the supervisor and the control
-// socket run as an always-on substrate, and (while log writing is enabled)
-// captured output is tee'd to per-service files under Paths.LogDir so agents
-// (or a later-attached viewer) can read it. With log writing off it runs as
-// a pure supervisor. Slog stays active - nothing owns the screen.
+// Headless supervises services with no terminal rendering. It is the
+// `-u headless` / `UI: none` mode: while log writing is enabled, captured output
+// is written to per-service files under Paths.LogDir so agents (or a
+// later-attached viewer) can read it; with log writing off it is a pure
+// supervisor. Slog stays active since nothing owns the screen.
 type Headless struct {
 	reg *addon.Registry
 
@@ -29,10 +29,13 @@ type Headless struct {
 
 var _ UserInterface = (*Headless)(nil)
 
+// NewHeadless returns a Headless UI backed by the given addon registry.
 func NewHeadless(reg *addon.Registry) *Headless {
 	return &Headless{reg: reg}
 }
 
+// Run supervises the configured services with no rendering, blocking until the
+// hub closes or the context is canceled.
 func (h *Headless) Run(cfg config.Config) error {
 	sup, err := supervisor.New(cfg, h.reg)
 	if err != nil {
@@ -50,10 +53,9 @@ func (h *Headless) Run(cfg config.Config) error {
 		return fmt.Errorf("failed to create log dir %q: %w", cfg.Paths.LogDir, err)
 	}
 
-	// Subscribe before Start so boot-time status/log events from a fast service
-	// aren't dropped (the Hub only delivers to existing subscribers). The
-	// consumeStatus goroutine can spin up first; the buffered channels hold any
-	// events until sink.consume starts draining. See blink.go for the rationale.
+	// subscribe before Start so boot-time status/log events from a fast service
+	// aren't dropped (the Hub only delivers to existing subscribers). The buffered
+	// channels hold events until the consumers drain them. See blink.go.
 	sub, cancelSub := sup.Subscribe()
 	defer cancelSub()
 	sink := newLogSink(cfg.Paths.LogDir, cfg.LogWriteEnabled())
@@ -82,6 +84,7 @@ func (h *Headless) consumeStatus(sub output.Subscription) {
 	}
 }
 
+// Stop cancels the run context and tears down the supervisor.
 func (h *Headless) Stop(_ config.Config) error {
 	h.mu.Lock()
 	sup := h.sup

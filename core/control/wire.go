@@ -7,10 +7,10 @@ import (
 	"github.com/toaweme/blink/core/protocol"
 )
 
-// envelope is the wire shape for a control command. It nests inside a
-// protocol.Envelope's Payload (Kind = KindControl). Two-level framing
-// keeps the streaming side (StatusEvent/LogLine) symmetric with control
-// while letting control carry a typed verb + payload.
+// envelope is the wire shape for a control command, nested inside a
+// protocol.Envelope's Payload (Kind = KindControl). Two-level framing keeps the
+// streaming side symmetric with control while letting control carry a typed
+// verb plus payload.
 type envelope struct {
 	ID      string          `json:"id,omitempty"`
 	Verb    string          `json:"verb"`
@@ -23,9 +23,8 @@ type resultEnvelope struct {
 	Result Result `json:"result"`
 }
 
-// EncodeCommand wraps a typed Command as a protocol.Envelope ready to
-// hand to a Transport. id is an optional correlation token the matching
-// result will echo.
+// EncodeCommand wraps a typed Command as a protocol.Envelope for a Transport.
+// id is an optional correlation token the matching result echoes.
 func EncodeCommand(cmd Command, id string) (protocol.Envelope, error) {
 	raw, err := json.Marshal(cmd)
 	if err != nil {
@@ -38,10 +37,9 @@ func EncodeCommand(cmd Command, id string) (protocol.Envelope, error) {
 	return protocol.Envelope{Kind: protocol.KindControl, Payload: body}, nil
 }
 
-// DecodeCommand unmarshals a control envelope into the concrete typed
-// Command for its verb. Returns the command, its correlation ID, and
-// any decoding error. Unknown verbs surface as an explicit error so the
-// server can reply with NotImplemented instead of silently dropping.
+// DecodeCommand unmarshals a control envelope into the concrete Command for its
+// verb, returning the command and its correlation ID. Unknown verbs surface as
+// an explicit error so the server can reply with NotImplemented.
 func DecodeCommand(env protocol.Envelope) (Command, string, error) {
 	if env.Kind != protocol.KindControl {
 		return nil, "", fmt.Errorf("expected control envelope, got %q", env.Kind)
@@ -79,10 +77,9 @@ func DecodeResult(env protocol.Envelope) (Result, string, error) {
 	return w.Result, w.ID, nil
 }
 
-// decodeByVerb maps a wire verb to its concrete Command struct. Adding
-// a verb means: declare the struct in commands.go and add an arm here.
-// Kept as a switch (not a registry) so the catalog is fully visible in
-// one file; a thousand-verb future can refactor.
+// decodeByVerb maps a wire verb to its concrete Command struct. Adding a verb
+// means declaring the struct in commands.go and adding an arm here. A switch,
+// not a registry, keeps the catalog visible in one file.
 func decodeByVerb(verb string, payload json.RawMessage) (Command, error) {
 	switch verb {
 	case VerbList:

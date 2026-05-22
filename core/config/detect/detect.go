@@ -21,12 +21,11 @@ func Detectors() []Detector {
 	}
 }
 
-// Scan runs every detector against dir and assembles an in-memory Config ready
-// to hand to the supervisor. It returns the Config alongside the flat list of
-// Detected (so callers can render labels/provenance in a picker). DirRoot is
-// set to dir; Paths are left zero so the caller resolves them. Service names
-// are made unique (first detector wins; later collisions get a numeric
-// suffix) so the result always passes loader.Validate.
+// Scan runs every detector against dir and assembles an in-memory Config,
+// returning it alongside the flat list of Detected for picker rendering. DirRoot
+// is set to dir; Paths are left zero for the caller to resolve. Service names
+// are made unique (first detector wins, later collisions get a numeric suffix)
+// so the result always passes loader.Validate.
 func Scan(dir string) (config.Config, []Detected, error) {
 	var detected []Detected
 	for _, d := range Detectors() {
@@ -56,12 +55,10 @@ func Scan(dir string) (config.Config, []Detected, error) {
 }
 
 // dropGoAirOverlap removes go-runtime services that an air config already
-// covers. air is a hot-reloader for the same Go binaries, so a ".air.registry"
-// service and the go service for ./cmd/registry are the same process described
-// twice; the air entry wins because it carries the user's real build/run
-// command, watch extensions, and excludes. Matching is by service name, which
-// is how both detectors name a service after its entrypoint. Collisions between
-// unrelated detectors still fall through to uniqueName's numeric suffix.
+// covers. air hot-reloads the same Go binaries, so a ".air.registry" service
+// and the go service for ./cmd/registry are the same process; the air entry
+// wins because it carries the user's real build/run command and watch config.
+// Matching is by service name.
 func dropGoAirOverlap(detected []Detected) []Detected {
 	airNames := make(map[string]struct{})
 	for _, d := range detected {
@@ -85,9 +82,8 @@ func dropGoAirOverlap(detected []Detected) []Detected {
 }
 
 // dockerFirst stably moves docker-runtime services to the front. Docker
-// typically runs the infrastructure (databases, queues) the app services lean
-// on, so listing it first puts it at the top of the picker and starts it ahead
-// of the apps. Relative order is otherwise preserved.
+// typically runs the infrastructure the app services depend on, so it starts
+// ahead of them. Relative order is otherwise preserved.
 func dockerFirst(detected []Detected) []Detected {
 	out := make([]Detected, 0, len(detected))
 	for _, d := range detected {

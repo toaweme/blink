@@ -8,47 +8,46 @@ import (
 	"github.com/toaweme/blink/core/control"
 )
 
-// App wraps the bubbletea program so callers can keep a reference to it for
-// sending external messages (log lines, status updates) from goroutines.
+// App wraps the bubbletea program so callers can send external messages
+// (log lines, status updates) from goroutines.
 type App struct {
 	prog  *tea.Program
-	model Model
+	model *Model
 }
 
-// WithZen starts the TUI in zen / raw mode when on=true. The host CLI
-// sets this from `blink -z` or `cfg.Zen`. Identical end-state to the
-// user pressing `z` at runtime, so the existing exit path (`z` again)
-// works the same way.
-func (m Model) WithZen(on bool) Model {
+// WithZen starts the TUI in zen / raw mode when on is true. Same end-state
+// as pressing z at runtime, so the z exit path works unchanged.
+func (m *Model) WithZen(on bool) *Model {
 	m.rawMode = on
 	return m
 }
 
-// WithKeymap replaces the model's keymap (e.g. with one merged from
-// blink.yaml's control.keys). Pass control.DefaultKeymap() merged via
-// Merge; the host CLI is responsible for surfacing a Merge error.
-func (m Model) WithKeymap(km control.Keymap) Model {
+// WithKeymap replaces the model's keymap, e.g. one merged from blink.yaml's
+// control.keys.
+func (m *Model) WithKeymap(km control.Keymap) *Model {
 	m.keymap = km
 	return m
 }
 
-// WithLogControl wires the host-side log sink into the model: logDir is
-// where selection writes land (<svc>.selected.log), on is the sink's initial
-// state for the footer indicator, and toggle flips the sink live (the `L`
-// key) returning the new state. Pass a nil toggle for read-only modes (a
-// remote mirror) - the key then does nothing.
-func (m Model) WithLogControl(logDir string, on bool, toggle func() bool) Model {
+// WithLogControl wires the log sink into the model: logDir is where selection
+// writes land (<svc>.selected.log), on is the footer indicator's initial state,
+// and toggle flips the sink live (the L key), returning the new state. A nil
+// toggle makes the L key a no-op (read-only modes).
+func (m *Model) WithLogControl(logDir string, on bool, toggle func() bool) *Model {
 	m.logDir = logDir
 	m.logsOn = on
 	m.logToggle = toggle
 	return m
 }
 
-func NewApp(model Model) *App {
+// NewApp wraps a model in a runnable bubbletea program with the alt-screen
+// and mouse capture enabled.
+func NewApp(model *Model) *App {
 	prog := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	return &App{prog: prog, model: model}
 }
 
+// Program returns the underlying bubbletea program.
 func (a *App) Program() *tea.Program { return a.prog }
 
 // Run blocks until the user quits.

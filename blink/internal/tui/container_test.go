@@ -5,7 +5,7 @@ import "testing"
 // feedDocker builds a model whose active tab is a managed "docker" service and
 // streams one line per (container, text) pair through the line handler, so the
 // child buffers and ring populate exactly as they would at runtime.
-func feedDocker(t *testing.T, lines []LineMsg) Model {
+func feedDocker(t *testing.T, lines []LineMsg) *Model {
 	t.Helper()
 	m := NewModel([]string{"docker"}, nil)
 	m.active = 1 // tabs = [all, docker]
@@ -14,7 +14,7 @@ func feedDocker(t *testing.T, lines []LineMsg) Model {
 	}
 	for _, ln := range lines {
 		next, _ := m.handleLineMsg(ln)
-		m = next.(Model)
+		m = next.(*Model)
 	}
 	return m
 }

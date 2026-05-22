@@ -21,8 +21,8 @@ type Runner struct {
 	mu        sync.Mutex
 	startedAt time.Time
 
-	// outputBuf holds every captured line - stdout and stderr are merged at
-	// the pipe level so a single reader sees them in source order.
+	// outputBuf holds every captured line. Stdout and stderr are merged at the
+	// pipe level so a single reader sees them in source order.
 	outputBuf *Buffer
 
 	// tee is an optional writer that receives every captured line with a
@@ -34,12 +34,12 @@ type Runner struct {
 	// the parent's stdin keep their current behavior.
 	stdin io.WriteCloser
 
-	// done is closed by Run() after cmd.Wait() returns and pipes are reaped.
-	// Stop waits on this so callers don't race the next bind against a still-
-	// dying process.
+	// done is closed by Run() after cmd.Wait() returns and pipes are reaped, so
+	// Stop callers don't race the next bind against a still-dying process.
 	done chan struct{}
 }
 
+// Config describes how to launch a single service process.
 type Config struct {
 	// Name identifies the owning service in logs.
 	Name    string
@@ -49,11 +49,13 @@ type Config struct {
 	Env     map[string]string
 	// Stdin, when true, gives the runner its own stdin pipe instead of
 	// inheriting the parent's. Required for `blink exec <target> stdin` to
-	// deliver bytes to the child. Opt-in so default-mode services keep their
-	// current behavior (inherited stdin, typing in the host terminal works).
+	// deliver bytes to the child. Opt-in so default-mode services keep inherited
+	// stdin.
 	Stdin bool
 }
 
+// Environment renders Config.Env as a slice of "KEY=value" strings for the
+// child process.
 func (c Config) Environment() []string {
 	env := make([]string, 0, len(c.Env))
 	for k, v := range c.Env {
@@ -62,6 +64,7 @@ func (c Config) Environment() []string {
 	return env
 }
 
+// NewRunner returns a Runner that will launch the process described by cfg.
 func NewRunner(cfg Config) *Runner {
 	return &Runner{
 		config:    cfg,
@@ -92,7 +95,7 @@ func (r *Runner) Run() error {
 	r.startedAt = time.Now()
 	r.mu.Unlock()
 
-	// single goroutine reads the merged stdout+stderr pipe so lines stay in
+	// a single goroutine reads the merged stdout+stderr pipe so lines stay in
 	// the order the child wrote them (panic stacks remain readable).
 	captureDone := make(chan struct{})
 	go func() {
@@ -116,8 +119,8 @@ func (r *Runner) Done() <-chan struct{} { return r.done }
 
 func (r *Runner) captureOutput(src io.ReadCloser, buf *Buffer) {
 	defer src.Close()
-	// bufio.Reader (not Scanner) so a single huge line cannot poison the stream
-	// - Scanner aborts permanently on ErrTooLong, dropping every subsequent line.
+	// bufio.Reader, not Scanner, so a single huge line cannot poison the stream:
+	// Scanner aborts permanently on ErrTooLong, dropping every subsequent line.
 	reader := bufio.NewReaderSize(src, 64*1024)
 	for {
 		line, err := reader.ReadString('\n')
@@ -169,6 +172,8 @@ func (r *Runner) Stop() error {
 	return r.StopWithGrace(true, 2*time.Second)
 }
 
+// StopWithGrace stops the process, optionally sending SIGINT first and
+// waiting graceTimeout before escalating to SIGKILL.
 func (r *Runner) StopWithGrace(interrupt bool, graceTimeout time.Duration) error {
 	r.mu.Lock()
 	cmd := r.cmd
@@ -206,6 +211,8 @@ func (r *Runner) CloseStdin() error {
 	return w.Close()
 }
 
+// Signal sends sig to the running process, or is a no-op if it has not
+// started or has already exited.
 func (r *Runner) Signal(sig os.Signal) error {
 	r.mu.Lock()
 	cmd := r.cmd

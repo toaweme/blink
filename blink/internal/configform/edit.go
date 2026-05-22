@@ -10,12 +10,10 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
-// EditService opens a compact, single-screen editor for one service, dispatched
-// on its runtime. Detected services arrive pre-filled, so the user only adjusts
-// what they want and presses enter once. others is the set of sibling service
-// names, used to reject a duplicate rename. Examples live in field descriptions
-// (never as placeholders, which render like real typed-in values and confuse
-// "is this set or not?").
+// EditService opens a single-screen editor for one service, dispatched on its
+// runtime. Detected services arrive pre-filled. others is the set of sibling
+// service names, used to reject a duplicate rename. Examples live in field
+// descriptions, not placeholders, which would read like real typed-in values.
 func EditService(svc *config.Service, others []string) error {
 	switch svc.Runtime {
 	case "go":
@@ -33,7 +31,7 @@ func nameField(svc *config.Service, others []string) *huh.Input {
 		Description("shown in the TUI and referenced by dependents").
 		Validate(func(s string) error {
 			if strings.TrimSpace(s) == "" {
-				return fmt.Errorf("required")
+				return errors.New("required")
 			}
 			for _, o := range others {
 				if o == s {
@@ -126,9 +124,8 @@ func editDocker(svc *config.Service, others []string) error {
 	stop := svc.Docker.StopOnExit
 
 	// the Confirm comes before the MultiSelect: a MultiSelect owns ↑/↓ for its
-	// options, so any field placed after it can't be reached with the arrow keys
-	// (only tab/enter). Keeping it last means every other field stays arrow-
-	// navigable and nothing is trapped behind it.
+	// options, so a field after it is reachable only by tab/enter. Keeping it last
+	// leaves every other field arrow-navigable.
 	group := []huh.Field{
 		nameField(svc, others),
 		huh.NewConfirm().
@@ -175,7 +172,7 @@ func abortOrErr(err error, form string) error {
 
 func notEmpty(s string) error {
 	if strings.TrimSpace(s) == "" {
-		return fmt.Errorf("required")
+		return errors.New("required")
 	}
 	return nil
 }

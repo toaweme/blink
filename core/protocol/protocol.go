@@ -1,14 +1,14 @@
-// Package protocol defines the canonical message types that flow from a
-// running blink supervisor out to consumers - the local TUI, the plain UI,
-// the headless log writer, and remote mirrors connected via a Transport.
+// Package protocol defines the canonical message types that flow from a running
+// blink supervisor out to consumers (local TUI, plain UI, headless log writer,
+// and remote mirrors connected via a Transport).
 //
-// Everything that crosses a boundary (process, socket, network) is one of
-// these. The supervisor emits StatusEvent / LogLine; mirrored clients receive
-// ConfigSnapshot once and StatusEvent / LogLine continuously; control flows
-// the other way as ControlCommand → ControlResult.
+// Everything that crosses a boundary (process, socket, network) is one of these.
+// The supervisor emits StatusEvent and LogLine; mirrored clients receive
+// ConfigSnapshot once and StatusEvent/LogLine continuously; control flows the
+// other way as ControlCommand to ControlResult.
 //
-// Envelope is the wire frame. Each typed payload knows its Kind so a
-// transport can demultiplex without reflection.
+// Envelope is the wire frame; each typed payload knows its Kind so a transport
+// can demultiplex without reflection.
 package protocol
 
 import (
@@ -23,28 +23,33 @@ import (
 type Kind string
 
 const (
-	KindStatus  Kind = "status"
-	KindLog     Kind = "log"
-	KindConfig  Kind = "config"
+	// KindStatus marks an envelope carrying a service status event.
+	KindStatus Kind = "status"
+	// KindLog marks an envelope carrying a captured log line.
+	KindLog Kind = "log"
+	// KindConfig marks an envelope carrying a config payload.
+	KindConfig Kind = "config"
+	// KindControl marks an envelope carrying a control command.
 	KindControl Kind = "control"
-	KindResult  Kind = "result"
+	// KindResult marks an envelope carrying a command result.
+	KindResult Kind = "result"
 )
 
 // Envelope is the framed wire format. Payload is a JSON-encoded value whose
-// concrete type is determined by Kind. At is the publisher's clock at emit
-// time; consumers should treat it as advisory (clocks drift).
+// concrete type is determined by Kind. At is the publisher's emit-time clock,
+// advisory only since clocks drift.
 type Envelope struct {
 	Kind    Kind            `json:"kind"`
 	Payload json.RawMessage `json:"payload"`
 	At      time.Time       `json:"at,omitempty"`
 }
 
-// StatusEvent reports a lifecycle transition for a service or one of its
-// managed children (e.g. compose containers). Status strings match the
-// supervisor's Status constants verbatim - keeping them stringly-typed at
-// this layer lets new runtimes invent new states without a protocol bump.
+// StatusEvent reports a lifecycle transition for a service or one of its managed
+// children (e.g. compose containers). Status strings match the supervisor's
+// Status constants verbatim; keeping them stringly-typed lets new runtimes
+// invent states without a protocol bump.
 //
-// Child is empty for the service itself; non-empty for nested processes.
+// Child is empty for the service itself, non-empty for nested processes.
 type StatusEvent struct {
 	Service string    `json:"service"`
 	Child   string    `json:"child,omitempty"`
@@ -53,9 +58,8 @@ type StatusEvent struct {
 	At      time.Time `json:"at"`
 }
 
-// LogLine is a single line of captured output from a service or a managed
-// child. Lines are pre-split on '\n' by the publisher; consumers do not
-// need to re-split.
+// LogLine is a single line of captured output from a service or managed child.
+// Lines are pre-split on '\n' by the publisher; consumers do not re-split.
 type LogLine struct {
 	Service string    `json:"service"`
 	Child   string    `json:"child,omitempty"`
@@ -63,18 +67,17 @@ type LogLine struct {
 	At      time.Time `json:"at,omitempty"`
 }
 
-// ConfigSnapshot is the host's effective config.Config at the moment of
-// connection. Mirrored clients receive one on connect so that saved search
-// presets, service names, and dependency edges are available locally
-// without re-reading blink.yaml. The client view is read-only against
-// this config; writes back to the host go through ControlCommand.
+// ConfigSnapshot is the host's effective config.Config at connection time.
+// Mirrored clients receive one on connect so saved search presets, service
+// names, and dependency edges are available locally without re-reading
+// blink.yaml. The client view is read-only; writes go through ControlCommand.
 type ConfigSnapshot struct {
 	Config config.Config `json:"config"`
 }
 
-// ServiceInfo is one row in a List-command result. Lives in protocol
-// (rather than control) so streaming consumers that only want to look
-// at status snapshots without dragging in the verb catalog can use it.
+// ServiceInfo is one row in a List-command result. It lives in protocol, not
+// control, so streaming consumers can read status snapshots without pulling in
+// the verb catalog.
 type ServiceInfo struct {
 	Name   string `json:"name"`
 	Status string `json:"status"`

@@ -1,7 +1,4 @@
-// Package golang is the Go-service runtime. Given a `runtime: go` service with
-// a `go.package`, it synthesizes a `go build` + binary run command pair and -
-// when the surrounding repo uses a workspace - adds every `go.work` `use`
-// directory as a recursive watch root.
+// Package golang is the Go-service runtime. Given a `runtime: go` service with a `go.package`, it synthesizes a `go build` plus binary-run command pair and, when the repo uses a workspace, adds every `go.work` `use` directory as a recursive watch root.
 package golang
 
 import (
@@ -14,12 +11,15 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
+// Runtime is the Go-service runtime that synthesizes build and run commands.
 type Runtime struct{}
 
 var _ addon.Runtime = Runtime{}
 
+// Name returns the runtime identifier.
 func (Runtime) Name() string { return "go" }
 
+// Prepare builds the addon plan with go build/run commands and workspace watches.
 func (r Runtime) Prepare(cfg config.Config, svc config.Service) (addon.Plan, error) {
 	gc := svc.Go
 	if gc == nil {
@@ -89,9 +89,7 @@ func findWorkfile(cfg config.Config, svc config.Service) (string, bool) {
 	return "", false
 }
 
-// workspaceWatches returns absolute paths for every `use` directive in the
-// go.work file that owns the service. The service's own directory is excluded
-// (already a watch root via Service.Dir).
+// workspaceWatches returns absolute paths for every `use` directive in the go.work file that owns the service. The service's own directory is excluded (already a watch root via Service.Dir).
 func workspaceWatches(cfg config.Config, svc config.Service) ([]string, error) {
 	workfile, ok := findWorkfile(cfg, svc)
 	if !ok {

@@ -6,13 +6,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/toaweme/log"
+
 	"github.com/toaweme/blink/blink/internal/tui"
 	"github.com/toaweme/blink/core/addon"
 	"github.com/toaweme/blink/core/config"
 	"github.com/toaweme/blink/core/control"
 	"github.com/toaweme/blink/core/output"
 	"github.com/toaweme/blink/core/supervisor"
-	"github.com/toaweme/log"
 )
 
 // Blink is the full-screen tabbed TUI built on bubbletea.
@@ -25,10 +26,12 @@ type Blink struct {
 
 var _ UserInterface = (*Blink)(nil)
 
+// NewBlink returns a Blink UI backed by the given addon registry.
 func NewBlink(reg *addon.Registry) *Blink {
 	return &Blink{reg: reg}
 }
 
+// Run starts the supervisor and the bubbletea TUI, blocking until the user quits.
 func (b *Blink) Run(cfg config.Config) error {
 	sup, err := supervisor.New(cfg, b.reg)
 	if err != nil {
@@ -40,7 +43,7 @@ func (b *Blink) Run(cfg config.Config) error {
 		return fmt.Errorf("failed to apply control.keys: %w", err)
 	}
 	// log writing is a Hub subscriber, orthogonal to the TUI render path. The
-	// model gets the dir + initial state + a toggle so `L` flips it live.
+	// model gets the dir, initial state, and a toggle so L flips it live.
 	sink := newLogSink(cfg.Paths.LogDir, cfg.LogWriteEnabled())
 	model := tui.NewModel(sup.Order(), controllerAdapter{sup: sup}).
 		WithKeymap(km).
@@ -53,21 +56,19 @@ func (b *Blink) Run(cfg config.Config) error {
 	b.app = app
 	b.mu.Unlock()
 
-	// Suppress slog output to stdout while the TUI owns the screen. Routing
-	// log messages into the TUI happens via tee writers below; everything
-	// emitted by toaweme/log goes to /dev/null for the duration of the run.
+	// suppress slog output while the TUI owns the screen; everything emitted by
+	// toaweme/log is discarded for the duration of the run.
 	silenceSlog()
 	defer restoreSlog()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Subscribe (and wire the forwarders) before Start: a fast shell/go service
-	// can reach "running" - or "crashed" - before the first subscriber exists,
-	// and the Hub drops any event with no subscriber. Subscribing first latches
-	// every boot-time status and log line into the buffered subscription
-	// channels; the forwarders drain them once app.Run begins. (Docker only
-	// looked correct because `compose up` is slow enough to publish late.)
+	// subscribe (and wire the forwarders) before Start: a fast shell/go service
+	// can reach "running" or "crashed" before the first subscriber exists, and
+	// the Hub drops any event with no subscriber. Subscribing first latches every
+	// boot-time status and log line into the buffered channels; the forwarders
+	// drain them once app.Run begins.
 	sub, cancelSub := sup.Subscribe()
 	defer cancelSub()
 	logSub, cancelLogSub := sup.Subscribe()
@@ -83,11 +84,12 @@ func (b *Blink) Run(cfg config.Config) error {
 
 	err = app.Run()
 
-	// Tear down regardless of how the TUI exited (user quit, panic-recovery, etc).
+	// tear down regardless of how the TUI exited.
 	_ = sup.Stop(ctx)
 	return err
 }
 
+// Stop quits the running program and tears down the supervisor.
 func (b *Blink) Stop(_ config.Config) error {
 	b.mu.Lock()
 	app := b.app
@@ -103,15 +105,14 @@ func (b *Blink) Stop(_ config.Config) error {
 	return nil
 }
 
-// forwardEvents posts status events from the supervisor's hub into the
-// bubbletea program. Child events (e.g. docker container state changes)
-// pass through unmodified so the model renders them nested under their
-// parent service.
+// forwardEvents posts status events from the supervisor's hub into the bubbletea
+// program. Child events (e.g. docker container state changes) pass through
+// unmodified so the model renders them nested under their parent service.
 func forwardEvents(app *tui.App, sub output.Subscription) {
 	for ev := range sub.Status {
 		var err error
 		if ev.Err != "" {
-			err = errString(ev.Err)
+			err = stringError(ev.Err)
 		}
 		app.Send(tui.StatusMsg{
 			Service: ev.Service,
@@ -122,19 +123,17 @@ func forwardEvents(app *tui.App, sub output.Subscription) {
 	}
 }
 
-// forwardLogs posts log lines from the supervisor's hub into the TUI.
-// Shell-runtime output, docker compose container output, and any other
-// captured stream all flow through the same channel.
+// forwardLogs posts log lines from the supervisor's hub into the TUI. All
+// captured streams (shell-runtime, docker compose, etc.) share one channel.
 func forwardLogs(app *tui.App, sub output.Subscription) {
 	for ln := range sub.Logs {
 		app.Send(tui.LineMsg{Service: ln.Service, Child: ln.Child, Line: ln.Line})
 	}
 }
 
-// pollWatchStats pushes the supervisor's aggregate watch counts into
-// the TUI on a slow cadence. The first message lands quickly (~1s after
-// start, by which point initial filesystem walks have completed) and
-// then every 5s to catch directories added at runtime.
+// pollWatchStats pushes the supervisor's watch counts into the TUI on a slow
+// cadence: the first message ~1s after start (once initial filesystem walks
+// complete), then every 5s to catch directories added at runtime.
 func pollWatchStats(ctx context.Context, app *tui.App, sup *supervisor.Supervisor) {
 	send := func() {
 		files, dirs := sup.WatchStats()
@@ -163,11 +162,11 @@ func pollWatchStats(ctx context.Context, app *tui.App, sup *supervisor.Superviso
 	}
 }
 
-// errString turns a protocol-wire error string back into an error so the
+// stringError turns a protocol-wire error string back into an error so the
 // TUI's StatusMsg consumer can keep its existing error-typed field.
-type errString string
+type stringError string
 
-func (e errString) Error() string { return string(e) }
+func (e stringError) Error() string { return string(e) }
 
 // controllerAdapter dispatches the TUI's session actions straight into the
 // local supervisor.
@@ -181,6 +180,8 @@ func (c controllerAdapter) Dispatch(action control.Action, service string) error
 		c.sup.RestartAll()
 	case control.ActionInsertBlank:
 		c.sup.InsertBlank(service)
+	default:
+		// view-only actions never reach the controller; ignore anything else.
 	}
 	return nil
 }

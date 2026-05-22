@@ -57,11 +57,11 @@ func TestBufferFullReturnsCopy(t *testing.T) {
 func TestBufferConcurrentAppend(t *testing.T) {
 	b := NewBuffer()
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := 0; j < 20; j++ {
+			for range 20 {
 				b.Append("x")
 			}
 		}()
@@ -74,7 +74,7 @@ func TestBufferTailStreamReceivesAppends(t *testing.T) {
 	b := NewBuffer()
 	b.Append("seed")
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	ch := b.TailStream(ctx, 0)

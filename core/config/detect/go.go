@@ -10,11 +10,10 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
-// goDetector recognises a Go module (go.mod) and emits one go-runtime service
-// per main package it finds. It scans for `package main` + `func main(` so a
-// repo laid out as ./cmd/api, ./cmd/worker yields a service each, named after
-// the entrypoint directory. A module with no discoverable main falls back to a
-// single root-package service the user can point at the right path.
+// goDetector recognizes a Go module (go.mod) and emits one go-runtime service
+// per main package, found by scanning for `package main` + `func main(` and
+// named after the entrypoint directory. A module with no discoverable main
+// falls back to a single root-package service.
 type goDetector struct{}
 
 var _ Detector = goDetector{}
@@ -24,13 +23,13 @@ func (goDetector) Name() string { return "go" }
 func (goDetector) Detect(dir string) ([]Detected, error) {
 	modPath := filepath.Join(dir, "go.mod")
 	if _, err := os.Stat(modPath); err != nil {
-		return nil, nil
+		// no go.mod: not a Go module, so no match.
+		return nil, nil //nolint:nilerr // absence of go.mod is a no-match, not a failure
 	}
 
 	mains := findMainPackages(dir)
 	if len(mains) == 0 {
-		// runnable entrypoint unknown: hand back a root service so the
-		// wizard has something to refine rather than nothing.
+		// no runnable entrypoint found: hand back a root service to refine.
 		name := moduleName(modPath)
 		if name == "" {
 			name = filepath.Base(dir)
@@ -78,13 +77,14 @@ func goServiceName(pkg, dir, modPath string) string {
 }
 
 // findMainPackages returns the relative package paths ("." or "./cmd/api") of
-// every directory under dir that declares package main with a func main. It
-// skips vendored, hidden, and build-output trees to stay fast on large repos.
+// every directory under dir that declares package main with a func main,
+// skipping vendored, hidden, and build-output trees.
 func findMainPackages(dir string) []string {
 	var pkgs []string
 	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			// skip an unreadable entry rather than aborting the walk.
+			return nil //nolint:nilerr // one bad entry must not stop package discovery
 		}
 		if d.IsDir() {
 			if path != dir && skipGoDir(d.Name()) {
@@ -100,7 +100,8 @@ func findMainPackages(dir string) []string {
 		}
 		rel, err := filepath.Rel(dir, filepath.Dir(path))
 		if err != nil {
-			return nil
+			// path not relativisable against dir: skip the file, keep walking.
+			return nil //nolint:nilerr // a non-relativisable path is skipped, not fatal
 		}
 		pkgs = appendUniqueString(pkgs, relPackage(rel))
 		return nil

@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"hash/fnv"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,11 +22,8 @@ const (
 	pulseInterval    = 700 * time.Millisecond
 )
 
-// Controller is the session-action sink the TUI dispatches into. The same
-// path serves both the local supervisor (controllerAdapter) and a remote
-// mirror (mirrorController over session.Client); the model never special-
-// cases which. Only role-allowed session actions reach here; view actions
-// stay in the model.
+// Controller is the session-action sink the TUI dispatches into. Only session
+// actions reach here; view actions stay in the model.
 type Controller interface {
 	Dispatch(action control.Action, service string) error
 }
@@ -43,22 +41,20 @@ type Model struct {
 	statuses map[string]string
 	buffers  map[string][]string
 
-	// childList[service] is the ordered, deduped set of container names seen
-	// for a runtime-managed service (docker compose). Drives the in-tab
-	// container ring and the [ / ] focus cycle.
+	// childList[service] is the ordered, deduped set of container names seen for
+	// a runtime-managed service (docker compose). Drives the in-tab container ring.
 	childList map[string][]string
-	// childFocus[service] is the container whose logs the service tab is
-	// filtered to. Empty / absent = the merged "all containers" view. Buffers
-	// for a focused container live under the composite key service+childSep+name.
+	// childFocus[service] is the container the service tab is filtered to. Empty
+	// or absent means the merged "all containers" view. Focused-container buffers
+	// live under the composite key service+childSep+name.
 	childFocus map[string]string
 
 	tabs   []string
 	active int
 
-	// tabHistory is the visited-tab trail behind [ / ] (browser back/forward).
-	// Every recorded move (arrows, number jump, wheel) truncates any forward
-	// entries and appends; histBack/histForward replay it without recording.
-	// histPos is the current index into tabHistory.
+	// tabHistory is the visited-tab trail (browser back/forward). Every recorded
+	// move truncates any forward entries and appends; histBack/histForward replay
+	// it without recording. histPos is the current index into tabHistory.
 	tabHistory []int
 	histPos    int
 
@@ -74,79 +70,71 @@ type Model struct {
 	// per-tab scroll state so switching tabs returns to where the user was.
 	scrollState map[string]tabScroll
 
-	// modalScroll is the line offset for the command-center modal, used
-	// when the modal body is taller than the terminal. Reset to 0 when
-	// the modal opens; j/k or up/down adjusts.
+	// modalScroll is the line offset for the command-center modal, used when its
+	// body is taller than the terminal. Reset to 0 on open; j/k or up/down adjusts.
 	modalScroll int
 
 	// helpOpen is true while the command-center/help modal is visible.
-	// Opened with / or ?, closed with esc/q.
 	helpOpen bool
 
 	// rawMode (toggled with z) tears down the TUI overlay: bubbletea exits
-	// alt-screen, mouse capture is disabled, View() returns empty, and new
-	// lines stream via tea.Println into the native terminal scrollback.
-	// This is the mode where native scroll + mouse-select Just Work.
+	// alt-screen, mouse capture is disabled, View() returns empty, and new lines
+	// stream via tea.Println into the native scrollback, where native scroll and
+	// mouse-select work.
 	rawMode bool
 
 	// animation
 	spinner    spinner.Model
 	pulsePhase int
 
-	// wrappedToBuffer[i] is the buffer index that wrapped visual row i was
-	// emitted from. Populated by renderBufferMapped on every refresh; used to
-	// keep the cursor row visible while scrolling.
+	// wrappedToBuffer[i] is the buffer index that wrapped visual row i was emitted
+	// from. Populated by renderBufferMapped; used to keep the cursor row visible
+	// while scrolling.
 	wrappedToBuffer []int
 
-	// startedAt[svc] is when the service most recently transitioned into
-	// "running". Cleared on any non-running status. Drives the footer
-	// uptime readout.
+	// startedAt[svc] is when the service most recently transitioned into "running".
+	// Cleared on any non-running status. Drives the footer uptime readout.
 	startedAt map[string]time.Time
 
-	// reloads[svc] counts how many times the service has been restarted
-	// since the TUI started (incremented on each "restarting"/"building"
-	// → "running" cycle, starting from 0 on the first run).
+	// reloads[svc] counts restarts since the TUI started, incremented on each
+	// "restarting"/"building" to "running" cycle.
 	reloads map[string]int
 
-	// watchFiles + watchDirs are the latest aggregate counts published
-	// by the supervisor via WatchStatsMsg. Both 0 before the first msg.
+	// watchFiles, watchDirs and watchPerSvc are the latest counts published by
+	// the supervisor via WatchStatsMsg. Zero before the first message.
 	watchFiles  int
 	watchDirs   int
 	watchPerSvc map[string]WatchStat
 
-	// cursorMode gates the line cursor + selection. Off by default: ↑/↓
-	// scroll the viewport fast. Toggled with `e`; on, ↑/↓ move the cursor
-	// and the selection keys (space, shift+↑/↓) become live.
+	// cursorMode gates the line cursor + selection. Off by default (↑/↓ scroll the
+	// viewport). Toggled with e; on, ↑/↓ move the cursor and the selection keys
+	// (space, shift+↑/↓) become live.
 	cursorMode bool
-	// tabCursor[tab] is the buffer index the cursor is parked on for that
-	// tab. Defaults to the last line (tail) for new tabs - see ensureCursor.
+	// tabCursor[tab] is the buffer index the cursor is parked on for that tab.
+	// Defaults to the tail line for new tabs (see ensureCursor).
 	tabCursor map[string]int
-	// selected[tab] is the set of buffer indices selected on that tab. The
-	// set allows gaps (space toggles single lines; shift+↑/↓ extends a run).
-	// Selection is stateless: there is no anchor, only the rows in this set.
+	// selected[tab] is the set of buffer indices selected on that tab. The set
+	// allows gaps. Selection is stateless: no anchor, only the rows in the set.
 	// Cleared when cursor mode exits.
 	selected map[string]map[int]bool
 
-	// log sink controls, injected by the host UI via WithLogControl. logDir
-	// is where selection writes land (<svc>.selected.log); logsOn mirrors the
-	// sink state for the footer; logToggle flips the sink live (nil = no-op,
-	// e.g. a remote mirror).
+	// log sink controls, injected via WithLogControl. logDir is where selection
+	// writes land (<svc>.selected.log); logsOn mirrors the sink state for the
+	// footer; logToggle flips the sink live (nil = no-op).
 	logDir    string
 	logsOn    bool
 	logToggle func() bool
 
-	// flash is a transient badge (e.g. COPIED, WRITTEN) shown in the top-right
-	// for flashDuration after an action. The pulse tick keeps re-rendering, so
-	// it fades on its own without an explicit timer.
+	// flash is a transient badge (e.g. COPIED, WRITTEN) shown in the top-right for
+	// flashDuration after an action. The pulse tick re-renders, so it fades on its
+	// own without a timer.
 	flash      string
 	flashColor string
 	flashAt    time.Time
 
-	// watchHintAt is when the watch-stats hint was last armed (a tab switch).
-	// The center footer shows "watching N files, M dirs" only for
-	// watchHintDuration after a switch, then it fades - the heartbeat tick
-	// re-renders it away, same as flash. Permanent watch counts cluttered the
-	// bar without earning the space.
+	// watchHintAt is when the watch-stats hint was last armed (a tab switch). The
+	// center footer shows it only for watchHintDuration after a switch, then the
+	// heartbeat tick fades it, same as flash.
 	watchHintAt time.Time
 }
 
@@ -158,15 +146,17 @@ const flashDuration = 1500 * time.Millisecond
 // after a tab switch before the heartbeat tick fades it.
 const watchHintDuration = 3 * time.Second
 
-// tabScroll captures where the viewport was sitting for a given tab so we can
-// restore it when the user comes back. followTail collapses to "stick to the
-// bottom" - if it's set we ignore yOffset and just GotoBottom on restore.
+// tabScroll captures where the viewport was sitting for a given tab so it can
+// be restored on return. When followTail is set, yOffset is ignored and restore
+// snaps to the bottom.
 type tabScroll struct {
 	yOffset    int
 	followTail bool
 }
 
-func NewModel(services []string, ctrl Controller) Model {
+// NewModel builds a TUI model for the given services, wiring the controller
+// that session actions dispatch into.
+func NewModel(services []string, ctrl Controller) *Model {
 	tabs := append([]string{allTab}, services...)
 	statuses := make(map[string]string, len(services))
 	buffers := make(map[string][]string, len(services)+1)
@@ -180,7 +170,7 @@ func NewModel(services []string, ctrl Controller) Model {
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
 
-	return Model{
+	return &Model{
 		services:    services,
 		statuses:    statuses,
 		buffers:     buffers,
@@ -213,9 +203,9 @@ func (m *Model) gotoTab(idx int) {
 	m.restoreScroll()
 }
 
-// histBack / histForward replay the visited-tab trail without recording, so
-// the trail behaves like browser history: back then a fresh jump forks a new
-// branch, back then forward returns to where you were.
+// histBack and histForward replay the visited-tab trail without recording, so
+// it behaves like browser history: back then a fresh jump forks a new branch,
+// back then forward returns to the prior tab.
 func (m *Model) histBack() {
 	if m.histPos <= 0 {
 		return
@@ -236,16 +226,15 @@ func (m *Model) histForward() {
 	m.restoreScroll()
 }
 
-// childSep joins a service and a focused container into one buffer/scroll/
-// cursor key. NUL never appears in a service or container name, so the
-// composite can't collide with a plain tab key.
+// childSep joins a service and a focused container into one composite key. NUL
+// never appears in a service or container name, so it can't collide with a
+// plain tab key.
 const childSep = "\x00"
 
 // viewKey is the key the active view's buffer, scroll, cursor and selection
-// state live under: the tab name itself, or a service+container composite
-// while a container is focused. Tab-identity logic (status dots, restart
-// dispatch, the all-tab special case) keeps using activeTab().
-func (m Model) viewKey() string {
+// state live under: the tab name, or a service+container composite while a
+// container is focused. Tab-identity logic keeps using activeTab().
+func (m *Model) viewKey() string {
 	tab := m.activeTab()
 	if c := m.childFocus[tab]; c != "" {
 		return tab + childSep + c
@@ -253,8 +242,8 @@ func (m Model) viewKey() string {
 	return tab
 }
 
-// noteChild records a freshly seen container for a service, preserving first-
-// seen order. Idempotent.
+// noteChild records a freshly seen container for a service in first-seen order.
+// Idempotent.
 func (m *Model) noteChild(service, child string) {
 	if m.childList == nil {
 		m.childList = map[string][]string{}
@@ -268,8 +257,8 @@ func (m *Model) noteChild(service, child string) {
 }
 
 // appendChildLine stores a raw (unprefixed) container line in its own buffer so
-// a focused container tab renders clean output. The prefixed copy still lands
-// in the merged service buffer and the all-tab via appendLine.
+// a focused container tab renders clean output. The prefixed copy still lands in
+// the merged service buffer and the all-tab via appendLine.
 func (m *Model) appendChildLine(service, child, line string) {
 	key := service + childSep + child
 	buf := append(m.buffers[key], line)
@@ -279,8 +268,8 @@ func (m *Model) appendChildLine(service, child, line string) {
 	m.buffers[key] = buf
 }
 
-// cycleChild advances the active service tab's container focus around the ring
-// "all" → first container → … → last → "all". No-op on tabs with no containers.
+// cycleChild advances the active service tab's container focus around the ring:
+// all, first container, ..., last, all. No-op on tabs with no containers.
 func (m *Model) cycleChild(delta int) {
 	tab := m.activeTab()
 	children := m.childList[tab]
@@ -311,14 +300,14 @@ func (m *Model) cycleChild(delta int) {
 	m.restoreScroll()
 }
 
-func (m Model) Init() tea.Cmd {
+// Init starts the spinner and the heartbeat tick that drive the soft animations.
+func (m *Model) Init() tea.Cmd {
 	return tea.Batch(m.spinner.Tick, tickCmd())
 }
 
-// Update routes incoming messages to per-type handlers. Heavy logic
-// lives in dedicated helpers (handleKey + per-modal subfunctions) so
-// this dispatcher stays scannable.
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// Update routes incoming messages to per-type handlers. Heavy logic lives in
+// dedicated helpers (handleKey and per-modal subfunctions).
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		return m.handleWindowSize(msg)
@@ -330,13 +319,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pulsePhase++
 		return m, tickCmd()
 	case refreshMsg:
-		// fired after exitRawMode reattaches the alt-screen; bring the
-		// viewport back to whatever offset it had before zen.
+		// fired after exitRawMode reattaches the alt-screen; restore the
+		// pre-zen viewport offset.
 		m.restoreScroll()
 		return m, nil
 	case WatchStatsMsg:
-		// flash the counts once when they first become known, so the user
-		// sees the watch footprint on startup without having to switch tabs.
+		// flash the counts once when first known, so the watch footprint shows
+		// on startup without a tab switch.
 		if m.watchPerSvc == nil {
 			m.watchHintAt = time.Now()
 		}
@@ -349,9 +338,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 	case tea.MouseMsg:
-		// horizontal wheel switches tabs (trackpad two-finger swipe,
-		// shift+wheel on most mice). Fires on press only to dodge
-		// rapid-fire double events.
+		// horizontal wheel switches tabs (trackpad swipe, shift+wheel on most
+		// mice). Press-only to avoid rapid-fire double events.
 		if msg.Action == tea.MouseActionPress {
 			switch msg.Button {
 			case tea.MouseButtonWheelLeft:
@@ -360,11 +348,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case tea.MouseButtonWheelRight:
 				m.gotoTab((m.active + 1) % len(m.tabs))
 				return m, nil
+			default:
+				// other buttons fall through to vertical-wheel handling below.
 			}
 		}
-		// in export (cursor) mode the vertical wheel moves the cursor and
-		// the viewport follows, so the cursor stays put under the scroll;
-		// otherwise it falls through to the viewport for plain scrolling.
+		// in cursor mode the vertical wheel moves the cursor and the viewport
+		// follows; otherwise it falls through to the viewport for plain scrolling.
 		if m.cursorMode && msg.Action == tea.MouseActionPress {
 			switch msg.Button {
 			case tea.MouseButtonWheelUp:
@@ -375,12 +364,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.moveCursor(scrollStep)
 				m.refreshViewport()
 				return m, nil
+			default:
+				// non-wheel buttons fall through to the viewport.
 			}
 		}
-		// the vertical wheel falls through to the viewport so scrolling
-		// works. Left-click is intentionally not bound: mouse reporting is
-		// unreliable across terminals (e.g. JetBrains), so the line cursor
-		// is keyboard-driven (`e` then ↑/↓).
+		// the vertical wheel falls through to the viewport for scrolling.
+		// Left-click is deliberately unbound: mouse reporting is unreliable
+		// across terminals, so the line cursor is keyboard-driven (e then ↑/↓).
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -391,7 +381,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.width = msg.Width
 	m.height = msg.Height
 	w, h := m.viewportSize()
@@ -406,18 +396,18 @@ func (m Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleLineMsg(msg LineMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleLineMsg(msg LineMsg) (tea.Model, tea.Cmd) {
 	line := msg.Line
 	if msg.Child != "" {
-		// raw line into the per-container buffer (clean, for a focused tab);
-		// the prefixed copy still flows into the merged service + all views.
+		// raw line into the per-container buffer (for a focused tab); the
+		// prefixed copy still flows into the merged service and all views.
 		m.noteChild(msg.Service, msg.Child)
 		m.appendChildLine(msg.Service, msg.Child, msg.Line)
 		line = lipgloss.NewStyle().Faint(true).Render("["+msg.Child+"]") + " " + line
 	}
 	m.appendLine(msg.Service, line)
 	if m.rawMode {
-		// stream into the native terminal so the user can scroll/select.
+		// stream into the native terminal so the user can scroll and select.
 		prefix := serviceStyle(msg.Service).Render("[" + msg.Service + "]")
 		return m, tea.Println(prefix + " " + line)
 	}
@@ -427,7 +417,7 @@ func (m Model) handleLineMsg(msg LineMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleStatusMsg(msg StatusMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleStatusMsg(msg StatusMsg) (tea.Model, tea.Cmd) {
 	if msg.Child == "" {
 		prev := m.statuses[msg.Service]
 		m.statuses[msg.Service] = msg.Status
@@ -451,8 +441,8 @@ func (m Model) handleStatusMsg(msg StatusMsg) (tea.Model, tea.Cmd) {
 	}
 	label := "── " + msg.Status + " ──"
 	if msg.Child != "" {
-		// surface the container so it joins the in-tab ring even before its
-		// first log line, and give its focused view the bare status marker.
+		// surface the container so it joins the in-tab ring before its first log
+		// line, and give its focused view the bare status marker.
 		m.noteChild(msg.Service, msg.Child)
 		m.appendChildLine(msg.Service, msg.Child, lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("── "+msg.Status+" ──"))
 		label = "── " + msg.Child + ": " + msg.Status + " ──"
@@ -469,10 +459,10 @@ func (m Model) handleStatusMsg(msg StatusMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleKey is the top-level key dispatcher. Modal-scoped overlays
-// (command-center, raw-mode) get first refusal; whatever they
-// don't consume falls through to the global keymap.
-func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+// handleKey is the top-level key dispatcher. Modal overlays (command-center,
+// raw-mode) get first refusal; anything they don't consume falls through to
+// the global keymap.
+func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.helpOpen {
 		return m.handleCommandCenterKey(msg)
 	}
@@ -482,9 +472,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m.handleGlobalKey(msg)
 }
 
-// handleCommandCenterKey owns the / and ? command-center overlay:
-// tab cycling and modal scroll.
-func (m Model) handleCommandCenterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+// handleCommandCenterKey owns the / and ? command-center overlay: close and
+// modal scroll.
+func (m *Model) handleCommandCenterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if a, ok := m.keymap.Lookup(msg.String()); ok && a == control.ActionCommandCenter {
 		m.helpOpen = false
 		return m, nil
@@ -494,8 +484,7 @@ func (m Model) handleCommandCenterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.helpOpen = false
 		return m, nil
 	case msg.String() == "ctrl+c":
-		// q is swallowed while the help modal is open (it's an
-		// easy fat-finger when reading); ctrl+c still tears down.
+		// q is swallowed while the help modal is open; ctrl+c still tears down.
 		return m, tea.Quit
 	}
 	// scroll the modal when its body overflows the viewport.
@@ -522,32 +511,30 @@ func (m Model) handleCommandCenterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleRawModeKey is the minimal keymap that works while the TUI has
-// handed the screen back to the user. Only z (exit zen) and quit
-// respond; everything else passes through to the native terminal.
-func (m Model) handleRawModeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+// handleRawModeKey is the minimal keymap active while the TUI has handed the
+// screen back to the user. Only z (exit zen) and quit respond; everything else
+// passes through to the native terminal.
+func (m *Model) handleRawModeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch a, _ := m.keymap.Lookup(msg.String()); a {
 	case control.ActionQuit:
 		return m, tea.Quit
 	case control.ActionToggleZen:
 		return m, m.exitRawMode()
+	default:
+		// every other action is swallowed in raw mode.
 	}
 	return m, nil
 }
 
-// scrollStep is how many lines ↑/↓ move the viewport in scroll mode. Bigger
-// than one line so paging through logs feels fast, small enough to stay
-// readable.
+// scrollStep is how many lines ↑/↓ move the viewport in scroll mode.
 const scrollStep = 3
 
-// handleGlobalKey is the main keymap: tab navigation, restart, action
-// verbs. Reached when no modal owns the input.
-func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// fixed scroll navigation, outside the rebindable keymap, so moving
-	// through logs is always fast regardless of mode. In export (cursor)
-	// mode these drive the cursor and the viewport follows it, so the
-	// cursor never strands off-screen; in scroll mode they move the
-	// viewport directly.
+// handleGlobalKey is the main keymap: tab navigation, restart, action verbs.
+// Reached when no modal owns the input.
+func (m *Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// fixed scroll navigation, outside the rebindable keymap, so log navigation
+	// is always fast. In cursor mode these drive the cursor and the viewport
+	// follows it; in scroll mode they move the viewport directly.
 	switch msg.String() {
 	case "pgup":
 		if m.cursorMode {
@@ -650,9 +637,9 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case control.ActionInsertBlank:
-		// inject a blank spacer into the focused service's output. It flows
-		// back through the Hub, so it lands in the buffer and the .log file;
-		// no local append here or it would double. No-op on the all-tab.
+		// inject a blank spacer into the focused service's output. It flows back
+		// through the Hub into the buffer and the .log file; no local append here
+		// or it would double. No-op on the all-tab.
 		if name := m.activeTab(); name != allTab && m.control != nil {
 			_ = m.control.Dispatch(control.ActionInsertBlank, name)
 		}
@@ -725,17 +712,15 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// handleClear empties the active tab's buffer. Terminal-only: never
-// touches disk.
-func (m Model) handleClear() (tea.Model, tea.Cmd) {
+// handleClear empties the active tab's buffer. Terminal-only: never touches disk.
+func (m *Model) handleClear() (tea.Model, tea.Cmd) {
 	m.clearTab(m.viewKey())
 	m.refreshViewport()
 	return m, nil
 }
 
-// handleClearAll empties every buffer. Terminal-only: never touches
-// disk.
-func (m Model) handleClearAll() (tea.Model, tea.Cmd) {
+// handleClearAll empties every buffer. Terminal-only: never touches disk.
+func (m *Model) handleClearAll() (tea.Model, tea.Cmd) {
 	for tab := range m.buffers {
 		m.buffers[tab] = nil
 	}
@@ -743,16 +728,16 @@ func (m Model) handleClearAll() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// enterRawMode tears down the bubbletea overlay so the user can use the
-// terminal's native scroll + mouse-select. Order matters here: tea.Println
-// is silently dropped while the alt-screen is active, so we sequence
-// ExitAltScreen → DisableMouse → Println(buffer) instead of batching.
+// enterRawMode tears down the bubbletea overlay so the user can use native
+// scroll and mouse-select. Order matters: tea.Println is dropped while the
+// alt-screen is active, so this sequences ExitAltScreen, DisableMouse,
+// Println(buffer) instead of batching.
 func (m *Model) enterRawMode() tea.Cmd {
 	m.saveScroll()
 	m.rawMode = true
-	// release mouse capture so native terminal scroll + select work.
+	// release mouse capture so native scroll and select work.
 	cmds := []tea.Cmd{tea.ExitAltScreen, tea.DisableMouse}
-	// flush current buffer into the native scrollback so the user lands on
+	// flush the current buffer into the native scrollback so the user lands on
 	// real content instead of an empty screen.
 	if buf := m.buffers[m.viewKey()]; len(buf) > 0 {
 		cmds = append(cmds, tea.Println(strings.Join(buf, "\n")))
@@ -760,8 +745,7 @@ func (m *Model) enterRawMode() tea.Cmd {
 	return tea.Sequence(cmds...)
 }
 
-// exitRawMode brings the overlay back. Mouse capture is re-enabled only if
-// the user had explicitly opted into it.
+// exitRawMode brings the overlay back and re-captures the mouse.
 func (m *Model) exitRawMode() tea.Cmd {
 	m.rawMode = false
 	// re-capture the mouse (cell motion is on for the whole TUI lifetime).
@@ -771,8 +755,8 @@ func (m *Model) exitRawMode() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// refreshMsg is a no-op message we dispatch after re-entering alt-screen so
-// the next Update tick re-renders the active tab.
+// refreshMsg is dispatched after re-entering alt-screen so the next Update tick
+// re-renders the active tab.
 type refreshMsg struct{}
 
 // saveScroll snapshots where the active tab's viewport is parked.
@@ -789,13 +773,13 @@ func (m *Model) saveScroll() {
 // restoreScroll repositions the viewport to wherever the now-active tab was
 // last seen. Brand-new tabs default to tail-following.
 func (m *Model) restoreScroll() {
-	// every tab switch funnels through here, so arm the watch-stats hint
-	// for the now-active tab. ready is irrelevant to the hint timer.
+	// every tab switch funnels through here, so arm the watch-stats hint for the
+	// now-active tab.
 	m.watchHintAt = time.Now()
 	if !m.ready {
 		return
 	}
-	// rerender for the now-active tab before repositioning.
+	// rerender the now-active tab before repositioning.
 	content, mapping := m.renderBufferMapped(m.buffers[m.viewKey()])
 	m.wrappedToBuffer = mapping
 	m.vp.SetContent(content)
@@ -814,9 +798,9 @@ func (m *Model) restoreScroll() {
 }
 
 // viewportSize returns the width and height available to the log viewport,
-// accounting for the current layout, the modal, and the one-line top
-// padding View() prepends for visual breathing room.
-func (m Model) viewportSize() (int, int) {
+// accounting for the header, footer, and the one-line top padding View()
+// prepends.
+func (m *Model) viewportSize() (int, int) {
 	h := m.height - lipgloss.Height(m.renderTabs()) - lipgloss.Height(m.renderFooter()) - topPaddingLines
 	if h < 1 {
 		h = 1
@@ -824,17 +808,18 @@ func (m Model) viewportSize() (int, int) {
 	return m.width, h
 }
 
-// topPaddingLines is the number of blank lines View() emits before the
-// header. Kept as a const so every height calculation that subtracts
-// chrome stays consistent.
+// topPaddingLines is the number of blank lines View() emits before the header.
+// A const so every height calculation that subtracts chrome stays consistent.
 const topPaddingLines = 1
 
-func (m Model) View() string {
+// View renders the current frame: tab header, log viewport, and footer. Returns
+// empty in raw mode (the native terminal owns the screen).
+func (m *Model) View() string {
 	if !m.ready {
 		return "starting blink..."
 	}
-	// raw mode: yield the screen entirely so native scroll + mouse-select work.
-	// new lines are pushed via tea.Println into the main screen buffer.
+	// raw mode: yield the screen so native scroll and mouse-select work. New
+	// lines are pushed via tea.Println into the main screen buffer.
 	if m.rawMode {
 		return ""
 	}
@@ -845,7 +830,7 @@ func (m Model) View() string {
 	return strings.Repeat("\n", topPaddingLines) + m.renderTabs() + "\n" + m.vp.View() + "\n" + footer
 }
 
-func (m Model) activeTab() string { return m.tabs[m.active] }
+func (m *Model) activeTab() string { return m.tabs[m.active] }
 
 func (m *Model) clearTab(tab string) {
 	m.buffers[tab] = nil
@@ -859,10 +844,8 @@ func (m *Model) appendLine(service, line string) {
 	m.buffers[service] = buf
 
 	prefix := serviceStyle(service).Render("["+service+"]") + " "
-	// In the all-tab the line gets a per-service background tint so the
-	// reader's eye can group consecutive lines by service without
-	// re-parsing the prefix on each one. Subtle enough that single
-	// lines don't shout.
+	// in the all-tab each line gets a per-service background tint so consecutive
+	// lines group by service without re-parsing the prefix.
 	tinted := serviceTintStyle(service).Render(prefix + line)
 	all := append(m.buffers[allTab], tinted)
 	if len(all) > maxBufferedLines {
@@ -871,11 +854,9 @@ func (m *Model) appendLine(service, line string) {
 	m.buffers[allTab] = all
 }
 
-// refreshViewport rerenders the active tab's content into the viewport while
-// strictly preserving the user's scroll offset. Auto-tail-following on new
-// lines is opt-in via refreshViewportFollow; everything else (mouse
-// selection, status updates that aren't on the current tab, etc.) MUST
-// go through refreshViewport so it never moves the user.
+// refreshViewport rerenders the active tab's content while preserving the scroll
+// offset. Tail-following on new lines is opt-in via refreshViewportFollow;
+// everything else goes through refreshViewport so it never moves the user.
 func (m *Model) refreshViewport() {
 	if !m.ready {
 		return
@@ -887,8 +868,8 @@ func (m *Model) refreshViewport() {
 	m.vp.SetYOffset(offset)
 }
 
-// refreshViewportFollow is the new-line variant: rerenders and, if the user
-// was already parked at the tail, snaps to the new bottom.
+// refreshViewportFollow is the new-line variant: rerenders and, if already
+// parked at the tail, snaps to the new bottom.
 func (m *Model) refreshViewportFollow() {
 	if !m.ready {
 		return
@@ -905,11 +886,11 @@ func (m *Model) refreshViewportFollow() {
 	}
 }
 
-// renderBufferMapped renders the active buffer with the cursor gutter
-// and selection tint, and returns a parallel slice whose i-th entry is
-// the original buffer index that the i-th wrapped visual row came from.
-// The mapping is what makes mouse hit-testing possible.
-func (m Model) renderBufferMapped(lines []string) (string, []int) {
+// renderBufferMapped renders the active buffer with the cursor gutter and
+// selection tint, returning a parallel slice whose i-th entry is the buffer
+// index that wrapped visual row i came from. The mapping enables mouse
+// hit-testing.
+func (m *Model) renderBufferMapped(lines []string) (string, []int) {
 	if len(lines) == 0 {
 		return "", nil
 	}
@@ -917,8 +898,8 @@ func (m Model) renderBufferMapped(lines []string) (string, []int) {
 	if w <= 0 {
 		w = 80
 	}
-	// the cursor and selection only render in cursor mode; scroll mode shows
-	// a clean buffer with no gutter markers.
+	// the cursor and selection only render in cursor mode; scroll mode shows a
+	// clean buffer with no gutter markers.
 	headIdx := -1
 	var selected map[int]bool
 	if m.cursorMode {
@@ -926,8 +907,7 @@ func (m Model) renderBufferMapped(lines []string) (string, []int) {
 		selected = m.selected[m.viewKey()]
 	}
 	// all three gutter markers use the same left-edge glyph so the cursor and
-	// selection bars line up exactly; only the color differs (cursor, selected,
-	// both). A right-aligned glyph here would read as shifted one cell over.
+	// selection bars line up exactly; only the color differs.
 	marker := func(color string) string {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render("▌")
 	}
@@ -956,21 +936,21 @@ func (m Model) renderBufferMapped(lines []string) (string, []int) {
 		b.WriteString(wrapped)
 		// each '\n' in wrapped becomes a new visual row
 		rows := strings.Count(wrapped, "\n") + 1
-		for r := 0; r < rows; r++ {
+		for range rows {
 			mapping = append(mapping, i)
 		}
 	}
 	return b.String(), mapping
 }
 
-// renderTabs is the header: brand + chips + thin rule.
-func (m Model) renderTabs() string {
+// renderTabs is the header: brand, chips, and a thin rule.
+func (m *Model) renderTabs() string {
 	chips := m.renderTabChips()
 	left := renderBrand() + "  " + chips
 	right := m.modeBadges()
 
-	// 1-cell horizontal padding on both edges so the brand and the
-	// UNLICENSED chip don't kiss the terminal walls.
+	// 1-cell horizontal padding on both edges so content doesn't touch the
+	// terminal walls.
 	const hPad = 1
 	leftW := lipgloss.Width(left)
 	rightW := lipgloss.Width(right)
@@ -984,12 +964,12 @@ func (m Model) renderTabs() string {
 	return bar + "\n" + sep
 }
 
-func (m Model) renderTabChips() string {
+func (m *Model) renderTabChips() string {
 	var parts []string
 	for i, name := range m.tabs {
 		var chip string
 		if i == m.active {
-			// active tab uses a flat filled chip (no rounded caps).
+			// active tab uses a flat filled chip.
 			chip = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("231")).
 				Background(lipgloss.Color("36")).
@@ -997,14 +977,14 @@ func (m Model) renderTabChips() string {
 				Padding(0, 1).
 				Render(name)
 		} else {
-			// inactive tabs are plain text - no background, no rounded ends.
+			// inactive tabs are plain text, no background.
 			chip = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("250")).
 				Padding(0, 1).
 				Render(name)
 		}
-		// the status dot lives outside the chip so its own ANSI color reset
-		// doesn't punch a hole through the chip's background fill.
+		// the status dot lives outside the chip so its ANSI color reset doesn't
+		// punch a hole through the chip's background fill.
 		if name != allTab {
 			chip = m.statusDot(m.statuses[name]) + chip
 		}
@@ -1013,26 +993,23 @@ func (m Model) renderTabChips() string {
 	return strings.Join(parts, " ")
 }
 
-// barBgColor is the slim background tint used for every interchangeable
-// bottom-bar (currently just the footer). It renders into a fixed slot
-// so a swap doesn't reflow the layout.
+// barBgColor is the background tint used for the bottom bar (footer).
 const barBgColor = "236"
 
-// barStyle returns the base style for a bottom-bar cell: 1-cell side
-// padding, the shared background tint. Foreground is set per-segment.
+// barStyle returns the base style for a bottom-bar cell with the shared
+// background tint. Foreground is set per-segment.
 func barStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Background(lipgloss.Color(barBgColor))
 }
 
-// renderBar paints a left/center/right tripartite bar onto barBgColor
-// across the full terminal width: a top rule plus a single content
-// row. Empty segments collapse to spaces.
-func (m Model) renderBar(left, center, right string) string {
+// renderBar paints a left/center/right bar onto barBgColor across the full
+// terminal width: a top rule plus a single content row. Empty segments collapse
+// to spaces.
+func (m *Model) renderBar(left, center, right string) string {
 	bg := barStyle()
-	// each spacer is rendered with the bar bg explicitly, otherwise the
-	// ANSI resets inside the pre-styled left/center/right segments would
-	// drop subsequent spaces back to the terminal default (typically
-	// black), leaving black gaps between the status chunks.
+	// each spacer is rendered with the bar bg explicitly; otherwise the ANSI
+	// resets inside the pre-styled segments would drop subsequent spaces back to
+	// the terminal default, leaving gaps between the status chunks.
 	gap := func(n int) string {
 		if n <= 0 {
 			return ""
@@ -1066,24 +1043,22 @@ func (m Model) renderBar(left, center, right string) string {
 	return rule + "\n" + content
 }
 
-func (m Model) renderFooter() string {
+func (m *Model) renderFooter() string {
 	dim := barStyle().Foreground(lipgloss.Color("244"))
 	val := barStyle().Foreground(lipgloss.Color("250")).Bold(true)
 	accent := barStyle().Foreground(lipgloss.Color("82"))
 
-	// left: selection shortcuts while in cursor mode; otherwise a single hint
-	// for the key that enters it, so the selection feature is discoverable. The
-	// service name / status / logs indicator that used to live here shifted
-	// the whole bar on every tab switch (the name width varied), so it's gone -
-	// the tab chips already show the active service and its status dot.
+	// left: selection shortcuts while in cursor mode; otherwise a single hint for
+	// the key that enters it, so the feature is discoverable. The tab chips
+	// already show the active service and its status dot.
 	var left string
 	if m.cursorMode {
 		left = m.renderCursorHints(dim, val)
 	} else if key := m.keyFor(control.ActionCursorMode); key != "" {
 		left = val.Render(key) + dim.Render(" export lines")
 	}
-	// container switcher hint, only on a tab that has children (docker). Lives
-	// in the footer so it never has to fit alongside the header tab chips.
+	// container switcher hint, only on a tab that has children (docker). In the
+	// footer so it never competes with the header tab chips.
 	if nav := m.renderContainerNav(dim, val); nav != "" {
 		if left != "" {
 			left = nav + dim.Render("  ·  ") + left
@@ -1092,11 +1067,10 @@ func (m Model) renderFooter() string {
 		}
 	}
 
-	// center: watch stats, shown only for a moment after a tab switch then
-	// faded - permanent counts cluttered the bar without earning it. On the
-	// all-tab show aggregates; on a service tab show that service's watcher
-	// counts. Hidden until the first WatchStatsMsg lands (or when the active
-	// service has no watcher).
+	// center: watch stats, shown only briefly after a tab switch then faded. On
+	// the all-tab show aggregates; on a service tab show that service's counts.
+	// Hidden until the first WatchStatsMsg lands or when the service has no
+	// watcher.
 	var center string
 	if time.Since(m.watchHintAt) < watchHintDuration {
 		files, dirs := m.watchFiles, m.watchDirs
@@ -1109,8 +1083,8 @@ func (m Model) renderFooter() string {
 		}
 		if files > 0 || dirs > 0 {
 			center = dim.Render("watching ") +
-				val.Render(fmt.Sprintf("%d", files)) + dim.Render(" files, ") +
-				val.Render(fmt.Sprintf("%d", dirs)) + dim.Render(" dirs")
+				val.Render(strconv.Itoa(files)) + dim.Render(" files, ") +
+				val.Render(strconv.Itoa(dirs)) + dim.Render(" dirs")
 		}
 	}
 
@@ -1120,13 +1094,11 @@ func (m Model) renderFooter() string {
 	return m.renderBar(left, center, right)
 }
 
-// renderContainerNav renders the compact container indicator shown in the
-// footer for a service tab that has children (docker compose). Form
-// "<key> <focus> i/n": the bound switch key (Tab), then the focus ("all" or a
-// container name) and ring position. A single key, not "key / key" which read
-// like the `/` command. Empty for tabs without children, so ordinary services
-// get no extra footer chrome, and always one short segment regardless of count.
-func (m Model) renderContainerNav(dim, val lipgloss.Style) string {
+// renderContainerNav renders the compact container indicator shown in the footer
+// for a service tab with children (docker compose). Form "<key> <focus> i/n":
+// the bound switch key, the focus ("all" or a container name), and ring
+// position. Empty for tabs without children.
+func (m *Model) renderContainerNav(dim, val lipgloss.Style) string {
 	children := m.childList[m.activeTab()]
 	if len(children) == 0 {
 		return ""
@@ -1147,10 +1119,9 @@ func (m Model) renderContainerNav(dim, val lipgloss.Style) string {
 		dim.Render(fmt.Sprintf(" %d/%d", idx+1, len(children)+1))
 }
 
-// renderCursorHints renders the selection-mode shortcut strip shown in the
-// footer center while cursor mode is active. Keys come from the live keymap so
-// rebinds are reflected; an unbound action is dropped from the strip.
-func (m Model) renderCursorHints(dim, val lipgloss.Style) string {
+// renderCursorHints renders the selection-mode shortcut strip shown while cursor
+// mode is active. Keys come from the live keymap; an unbound action is dropped.
+func (m *Model) renderCursorHints(dim, val lipgloss.Style) string {
 	hints := []struct {
 		action control.Action
 		label  string
@@ -1175,7 +1146,7 @@ func (m Model) renderCursorHints(dim, val lipgloss.Style) string {
 
 // keyFor returns the first key bound to an action in the live keymap, or "".
 // Keys are humanized (e.g. " " -> "space") for display.
-func (m Model) keyFor(a control.Action) string {
+func (m *Model) keyFor(a control.Action) string {
 	for _, e := range m.keymap.Help() {
 		if e.Action == a && len(e.Keys) > 0 {
 			return humanizeKey(e.Keys[0])
@@ -1184,7 +1155,7 @@ func (m Model) keyFor(a control.Action) string {
 	return ""
 }
 
-func (m Model) renderRightFooter(dim, val, accent lipgloss.Style) string {
+func (m *Model) renderRightFooter(dim, val, accent lipgloss.Style) string {
 	now := time.Now()
 	tab := m.activeTab()
 	if tab != allTab {
@@ -1193,11 +1164,11 @@ func (m Model) renderRightFooter(dim, val, accent lipgloss.Style) string {
 			parts = append(parts, dim.Render("↑ ")+accent.Render(formatUptime(now.Sub(t))))
 		}
 		if n := m.reloads[tab]; n > 0 {
-			parts = append(parts, dim.Render("⟳ ")+val.Render(fmt.Sprintf("%d", n)))
+			parts = append(parts, dim.Render("⟳ ")+val.Render(strconv.Itoa(n)))
 		}
 		return strings.Join(parts, dim.Render(" · "))
 	}
-	// all-tab: aggregate "oldest uptime" + total reloads across services.
+	// all-tab: oldest uptime and total reloads across services.
 	var oldest time.Time
 	for _, s := range m.services {
 		t, ok := m.startedAt[s]
@@ -1217,13 +1188,13 @@ func (m Model) renderRightFooter(dim, val, accent lipgloss.Style) string {
 		parts = append(parts, dim.Render("↑ ")+accent.Render(formatUptime(now.Sub(oldest))))
 	}
 	if total > 0 {
-		parts = append(parts, dim.Render("⟳ ")+val.Render(fmt.Sprintf("%d", total)))
+		parts = append(parts, dim.Render("⟳ ")+val.Render(strconv.Itoa(total)))
 	}
 	return strings.Join(parts, dim.Render(" · "))
 }
 
-// formatUptime renders a duration as a compact human string: 12s,
-// 2m13s, 1h04m, 3d02h. Trims to two significant units.
+// formatUptime renders a duration compactly (12s, 2m13s, 1h04m, 3d02h), trimmed
+// to two significant units.
 func formatUptime(d time.Duration) string {
 	if d < time.Second {
 		return "0s"
@@ -1245,9 +1216,9 @@ func formatUptime(d time.Duration) string {
 	}
 }
 
-// modeBadges returns the small pill cluster that lives in the corner of the
-// chrome. Only renders pills for modes that are currently on.
-func (m Model) modeBadges() string {
+// modeBadges returns the corner pill cluster, rendering only the modes that are
+// currently on.
+func (m *Model) modeBadges() string {
 	var pills []string
 	if m.flash != "" && time.Since(m.flashAt) < flashDuration {
 		pills = append(pills, badge(m.flash, m.flashColor))
@@ -1286,11 +1257,11 @@ func padRight(s string, n int) string {
 }
 
 // statusDot picks a glyph and color per status. Transient statuses use the
-// animated spinner frame; running uses a soft pulse so it feels alive.
-func (m Model) statusDot(status string) string {
+// spinner frame; running uses a soft pulse.
+func (m *Model) statusDot(status string) string {
 	switch status {
 	case "running":
-		// pulse between two close shades of green every tick
+		// pulse between close shades of green every tick.
 		shades := []lipgloss.Color{"82", "118", "82", "46"}
 		c := shades[m.pulsePhase%len(shades)]
 		return lipgloss.NewStyle().Foreground(c).Render("●")
@@ -1305,7 +1276,7 @@ func (m Model) statusDot(status string) string {
 	}
 }
 
-// renderBrand draws a tasteful gradient "blink" wordmark in the header.
+// renderBrand draws the gradient "blink" wordmark in the header.
 func renderBrand() string {
 	letters := []struct {
 		r rune
@@ -1320,29 +1291,25 @@ func renderBrand() string {
 	return out.String()
 }
 
-// service color palette mirrors plain UI for consistency.
+// palette mirrors the plain UI's service colors for consistency.
 var palette = []lipgloss.Color{
 	lipgloss.Color("39"), lipgloss.Color("214"), lipgloss.Color("141"),
 	lipgloss.Color("82"), lipgloss.Color("203"), lipgloss.Color("220"),
 	lipgloss.Color("117"), lipgloss.Color("213"),
 }
 
-// tintPalette is the darkened counterpart of palette - one very subdued
-// background color per service slot. Hand-picked from xterm-256 so each
-// stays distinct under most terminal themes. Used only in the all-tab
-// to hint visually which service a line belongs to without obscuring
-// the line text. (Most terminals render these so faintly that on a dark
-// theme it looks like a 5% tint; on a light theme the row briefly
-// brightens. Either way the effect is "subtle stripe", not "highlight".)
+// tintPalette is the darkened counterpart of palette: one subdued background
+// color per service slot, used only in the all-tab to hint which service a line
+// belongs to without obscuring the text.
 var tintPalette = []lipgloss.Color{
-	lipgloss.Color("17"),  // dim blue ↔ palette 39
-	lipgloss.Color("58"),  // dim olive ↔ 214
-	lipgloss.Color("53"),  // dim purple ↔ 141
-	lipgloss.Color("22"),  // dim green ↔ 82
-	lipgloss.Color("52"),  // dim red ↔ 203
-	lipgloss.Color("100"), // dim yellow ↔ 220
-	lipgloss.Color("24"),  // dim teal ↔ 117
-	lipgloss.Color("89"),  // dim magenta ↔ 213
+	lipgloss.Color("17"),  // dim blue, palette 39
+	lipgloss.Color("58"),  // dim olive, 214
+	lipgloss.Color("53"),  // dim purple, 141
+	lipgloss.Color("22"),  // dim green, 82
+	lipgloss.Color("52"),  // dim red, 203
+	lipgloss.Color("100"), // dim yellow, 220
+	lipgloss.Color("24"),  // dim teal, 117
+	lipgloss.Color("89"),  // dim magenta, 213
 }
 
 func paletteIndex(name string) int {
@@ -1355,9 +1322,8 @@ func serviceStyle(name string) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(palette[paletteIndex(name)]).Bold(true)
 }
 
-// serviceTintStyle returns the muted-background style used to tint a
-// service's lines in the all-tab. Foreground inherits from the line
-// content, so the existing serviceStyle prefix renders on top fine.
+// serviceTintStyle returns the muted-background style used to tint a service's
+// lines in the all-tab. Foreground inherits from the line content.
 func serviceTintStyle(name string) lipgloss.Style {
 	return lipgloss.NewStyle().Background(tintPalette[paletteIndex(name)])
 }

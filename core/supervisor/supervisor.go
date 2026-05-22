@@ -1,7 +1,11 @@
+// Package supervisor orchestrates the configured services: it starts them in
+// dependency order, restarts them (and their dependents) on file changes, and
+// fans status transitions and captured output out through a single Hub.
 package supervisor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -10,37 +14,44 @@ import (
 	"sync"
 	"time"
 
+	"github.com/toaweme/log"
+
 	"github.com/toaweme/blink/core/addon"
 	"github.com/toaweme/blink/core/config"
 	"github.com/toaweme/blink/core/exec"
 	"github.com/toaweme/blink/core/output"
 	"github.com/toaweme/blink/core/protocol"
 	"github.com/toaweme/blink/core/watcher"
-	"github.com/toaweme/log"
 )
 
 // Status is the lifecycle state of a single service.
 type Status string
 
 const (
-	StatusPending    Status = "pending"
-	StatusBuilding   Status = "building"
-	StatusRunning    Status = "running"
+	// StatusPending is the initial state before a service has started.
+	StatusPending Status = "pending"
+	// StatusBuilding means a build step is running before the service starts.
+	StatusBuilding Status = "building"
+	// StatusRunning means the service process is up.
+	StatusRunning Status = "running"
+	// StatusRestarting means the service is being restarted.
 	StatusRestarting Status = "restarting"
-	StatusExited     Status = "exited"
-	StatusCrashed    Status = "crashed"
-	StatusStopped    Status = "stopped"
+	// StatusExited means the process exited cleanly.
+	StatusExited Status = "exited"
+	// StatusCrashed means the process exited with a non-zero status.
+	StatusCrashed Status = "crashed"
+	// StatusStopped means the service was stopped by the supervisor.
+	StatusStopped Status = "stopped"
 )
 
-// Supervisor orchestrates the configured services. All status transitions
-// and captured log lines flow out through a single Hub - consumers (TUI,
-// plain UI, headless log writer, remote mirror) subscribe and get their own
-// independent channels of protocol.StatusEvent / protocol.LogLine.
+// Supervisor orchestrates the configured services. Status transitions and
+// captured log lines flow out through a single Hub; consumers (TUI, plain UI,
+// headless log writer, remote mirror) subscribe for their own independent
+// channels of protocol.StatusEvent and protocol.LogLine.
 //
-// Cross-cutting lifecycle work (port reclaim, future secret injection)
-// goes through the optional hooks registry. nil means
-// no hooks are configured - perfectly fine, the supervisor just skips
-// the dispatch points.
+// Cross-cutting lifecycle work (port reclaim, future secret injection) goes
+// through the optional hooks registry. A nil registry means no hooks, and the
+// supervisor simply skips the dispatch points.
 type Supervisor struct {
 	cfg      config.Config
 	registry *addon.Registry
@@ -50,14 +61,13 @@ type Supervisor struct {
 
 	hub *output.Hub
 
-	ctx    context.Context
+	ctx    context.Context //nolint:containedctx // stored run context, derived in Start and canceled in Stop, drives every service goroutine's lifecycle.
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	// stdinEnabled flips on stdin pipes for every shell-lifecycle service.
-	// Off by default - services then inherit the parent's stdin as before.
-	// Enabled by `blink run` when the control socket is configured so the
-	// "send" op has somewhere to write.
+	// stdinEnabled gives every shell-lifecycle service its own stdin pipe. Off
+	// by default (services inherit the parent's stdin); enabled by `blink run`
+	// when the control socket is configured so the "send" op has a destination.
 	stdinEnabled bool
 }
 
@@ -65,7 +75,7 @@ type Supervisor struct {
 // Must be called before Start. No-op once services are running.
 func (s *Supervisor) EnableStdin(on bool) { s.stdinEnabled = on }
 
-// WatchStats returns the aggregate file + directory counts across every
+// WatchStats returns the aggregate file and directory counts across every
 // service's watcher. Both zero when no watchers are running.
 func (s *Supervisor) WatchStats() (files, dirs int) {
 	for _, st := range s.services {
@@ -88,8 +98,8 @@ type WatchStat struct {
 	Dirs  int
 }
 
-// WatchStatsByService returns the file + dir counts keyed by service
-// name. Services without a watcher are omitted entirely.
+// WatchStatsByService returns the file and dir counts keyed by service name.
+// Services without a watcher are omitted.
 func (s *Supervisor) WatchStatsByService() map[string]WatchStat {
 	out := make(map[string]WatchStat, len(s.services))
 	for name, st := range s.services {
@@ -120,9 +130,9 @@ type serviceState struct {
 }
 
 // New builds a Supervisor for cfg, resolving runtimes from reg and merging
-// defaults. Returns an error on cyclic / invalid deps or unknown runtimes.
-// The caller owns the registry and must register every runtime it expects
-// to be looked up, including "shell".
+// defaults. Returns an error on cyclic or invalid deps or unknown runtimes. The
+// caller owns the registry and must register every runtime to be looked up,
+// including "shell".
 func New(cfg config.Config, reg *addon.Registry) (*Supervisor, error) {
 	s := &Supervisor{
 		cfg:      cfg,
@@ -131,8 +141,8 @@ func New(cfg config.Config, reg *addon.Registry) (*Supervisor, error) {
 		hub:      output.NewHub(),
 	}
 
-	// Resolve runtimes + merge defaults before any other validation, so the
-	// rest of supervisor setup sees the effective service.
+	// resolve runtimes and merge defaults before other validation, so the rest
+	// of setup sees the effective service.
 	merged := make([]config.Service, len(cfg.Services))
 	plans := make([]addon.Plan, len(cfg.Services))
 	for i, svc := range cfg.Services {
@@ -176,23 +186,23 @@ func New(cfg config.Config, reg *addon.Registry) (*Supervisor, error) {
 	return s, nil
 }
 
-// Subscribe registers a consumer on the supervisor's event bus. The
-// returned cancel func unregisters the subscription; the channels close
-// either on cancel or when the supervisor stops.
+// Subscribe registers a consumer on the supervisor's event bus. The returned
+// cancel func unregisters the subscription; channels close on cancel or when
+// the supervisor stops.
 func (s *Supervisor) Subscribe() (output.Subscription, func()) { return s.hub.Subscribe() }
 
+// Order returns the service names in dependency-resolved start order.
 func (s *Supervisor) Order() []string { return append([]string(nil), s.order...) }
 
 // InsertBlank publishes an empty log line for a service onto the Hub so every
-// subscriber - the TUI buffer, the per-service .log file, any remote mirror -
-// gets the same visual spacer. Used by the TUI's enter key to break up a
-// service's output stream.
+// subscriber (TUI buffer, per-service .log file, remote mirror) gets the same
+// visual spacer. Used by the TUI's enter key to break up output.
 func (s *Supervisor) InsertBlank(service string) {
 	s.hub.PublishLog(protocol.LogLine{Service: service, Line: ""})
 }
 
-// Runner returns the current process runner for a service (or nil - including
-// for runtime-managed services like docker where there's no host process).
+// Runner returns the current process runner for a service, or nil (including
+// runtime-managed services like docker where there is no host process).
 func (s *Supervisor) Runner(name string) *exec.Runner {
 	st, ok := s.services[name]
 	if !ok {
@@ -203,6 +213,8 @@ func (s *Supervisor) Runner(name string) *exec.Runner {
 	return st.runner
 }
 
+// Status returns the current lifecycle Status of a service, or StatusPending
+// if the name is unknown.
 func (s *Supervisor) Status(name string) Status {
 	st, ok := s.services[name]
 	if !ok {
@@ -213,6 +225,8 @@ func (s *Supervisor) Status(name string) Status {
 	return st.status
 }
 
+// Start launches every configured service and its file watchers, deriving an
+// internal context from ctx that Stop later cancels.
 func (s *Supervisor) Start(ctx context.Context) error {
 	s.ctx, s.cancel = context.WithCancel(ctx)
 
@@ -250,6 +264,8 @@ func (s *Supervisor) Start(ctx context.Context) error {
 	return nil
 }
 
+// Stop cancels the run context, stops every service in reverse start order,
+// waits for all goroutines to drain, and closes the Hub.
 func (s *Supervisor) Stop(ctx context.Context) error {
 	if s.cancel != nil {
 		s.cancel()
@@ -270,6 +286,8 @@ func (s *Supervisor) Stop(ctx context.Context) error {
 	return nil
 }
 
+// Restart signals a single service to restart, returning an error if the name
+// is unknown.
 func (s *Supervisor) Restart(name string) error {
 	st, ok := s.services[name]
 	if !ok {
@@ -282,6 +300,7 @@ func (s *Supervisor) Restart(name string) error {
 	return nil
 }
 
+// RestartAll signals every configured service to restart.
 func (s *Supervisor) RestartAll() {
 	for _, name := range s.order {
 		_ = s.Restart(name)
@@ -309,9 +328,9 @@ func (s *Supervisor) run(st *serviceState) {
 	}
 }
 
-// runManaged delegates lifecycle to a addon.Manager (e.g. docker compose).
-// Events from the manager are forwarded into the supervisor's event stream so
-// the UI sees per-child status changes.
+// runManaged delegates lifecycle to an addon.Manager (e.g. docker compose),
+// forwarding its events into the supervisor's stream so the UI sees per-child
+// status changes.
 func (s *Supervisor) runManaged(st *serviceState) {
 	defer s.wg.Done()
 	defer close(st.done)
@@ -322,10 +341,10 @@ func (s *Supervisor) runManaged(st *serviceState) {
 
 	s.wg.Add(1)
 	go s.forwardManagerEvents(st)
-	// Service-level output (Child==""). The docker runtime multiplexes every
-	// container onto this one stream, tagging each line with its container in
-	// LogLine.Child, so per-container logs flow without the supervisor knowing
-	// the container set up front.
+	// service-level output (Child==""). The docker runtime multiplexes every
+	// container onto this stream, tagging each line with LogLine.Child, so
+	// per-container logs flow without the supervisor knowing the container set
+	// up front.
 	if ch := mgr.Logs(""); ch != nil {
 		s.wg.Add(1)
 		go s.forwardManagerLogs(st.svc.Name, ch)
@@ -360,10 +379,10 @@ func (s *Supervisor) runManaged(st *serviceState) {
 	}
 }
 
-// collectChildren returns the named per-child log channels a managed service
-// wants pulled in addition to the aggregate Logs("") stream. Docker streams
-// every container through Logs("") instead, so this stays empty; it remains
-// the seam for a runtime that exposes one channel per named child.
+// collectChildren returns named per-child log channels to pull in addition to
+// the aggregate Logs("") stream. Docker streams everything through Logs(""), so
+// this stays empty; it is the seam for a runtime exposing one channel per named
+// child.
 func collectChildren(svc config.Service) []string {
 	return nil
 }
@@ -488,9 +507,9 @@ func (s *Supervisor) runChain(st *serviceState, cmds []config.Command) error {
 	return nil
 }
 
-// runTracked runs a transient (build / before / after) command while keeping
-// the runner reachable via st.runner, so Stop()'s stopRunner sweep can kill it
-// even mid-build. Cleared on return.
+// runTracked runs a transient (build, before, after) command while keeping the
+// runner reachable via st.runner, so Stop's stopRunner sweep can kill it
+// mid-build. Cleared on return.
 func (s *Supervisor) runTracked(st *serviceState, c config.Command) error {
 	if s.ctx.Err() != nil {
 		return s.ctx.Err()
@@ -500,8 +519,8 @@ func (s *Supervisor) runTracked(st *serviceState, c config.Command) error {
 	st.mu.Lock()
 	st.runner = runner
 	st.mu.Unlock()
-	// Recheck after publishing: if Stop's sweep ran in the window above and
-	// saw a nil runner, it would have skipped - kill ourselves now.
+	// recheck: if Stop's sweep ran in the window above and saw a nil runner it
+	// would have skipped this command, so stop it here.
 	if s.ctx.Err() != nil {
 		_ = runner.Stop()
 		st.mu.Lock()
@@ -606,9 +625,9 @@ func (s *Supervisor) setStatusErr(st *serviceState, status Status, err error) {
 	s.publishStatus(st.svc.Name, "", status, err)
 }
 
-// publishStatus is the single point that translates supervisor-local status
-// updates into a protocol.StatusEvent and pushes it through the Hub. All
-// status emission - service, managed child, restart marker - goes here.
+// publishStatus translates a supervisor-local status update into a
+// protocol.StatusEvent and pushes it through the Hub. All status emission
+// (service, managed child, restart marker) goes here.
 func (s *Supervisor) publishStatus(service, child string, status Status, err error) {
 	ev := protocol.StatusEvent{
 		Service: service,
@@ -634,10 +653,9 @@ func (s *Supervisor) publishLog(service, child, line string) {
 	})
 }
 
-// tee returns an io.Writer that publishes every line written to it as a
-// protocol.LogLine on the Hub. The exec.Runner.captureOutput goroutine
-// already splits on '\n' and writes one line per call (with a trailing
-// newline), so this just trims and forwards.
+// tee returns an io.Writer that publishes each line written to it as a
+// protocol.LogLine on the Hub. exec.Runner.captureOutput already writes one
+// line per call, so this trims the trailing newline and forwards.
 func (s *Supervisor) tee(service string) io.Writer {
 	return supervisorTee{s: s, service: service}
 }
@@ -690,16 +708,15 @@ func topoSort(services []config.Service) ([]string, error) {
 	}
 
 	if len(order) != len(services) {
-		return nil, fmt.Errorf("supervisor: dependency cycle detected in services")
+		return nil, errors.New("supervisor: dependency cycle detected in services")
 	}
 	return order, nil
 }
 
-// dispatchHooks runs every registered ServiceHook for the given phase
-// against the service. Hook errors log at warn and never abort lifecycle
-// (matches portkill's historical best-effort behavior; future strict
-// hooks can surface failures via status events instead of returning an
-// error). A nil hooks registry makes this a no-op.
+// dispatchHooks runs every registered ServiceHook for the given phase against
+// the service. Hook errors log at warn and never abort the lifecycle; a strict
+// hook can surface failures via status events instead. A nil registry is a
+// no-op.
 func (s *Supervisor) dispatchHooks(phase addon.Phase, svc config.Service) {
 	if !s.registry.HasHooks(phase) {
 		return

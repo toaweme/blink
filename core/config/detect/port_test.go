@@ -49,10 +49,10 @@ func Test_SniffPorts(t *testing.T) {
 			want:  []config.Port{config.LiteralPort(3000)},
 		},
 		{
-			name: "export prefix, comments, and url value",
+			name:  "export prefix, comments, and url value",
 			files: map[string]string{"svc/.env": "# comment\nexport SERVER_ADDR=http://localhost:9000/health\n"},
-			svc:  config.Service{Name: "svc", Dir: "svc"},
-			want: []config.Port{config.LiteralPort(9000)},
+			svc:   config.Service{Name: "svc", Dir: "svc"},
+			want:  []config.Port{config.LiteralPort(9000)},
 		},
 		{
 			name:  "ignores non-port keys",

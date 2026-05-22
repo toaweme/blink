@@ -7,12 +7,12 @@ import (
 	"io"
 	"os/exec"
 
-	"github.com/toaweme/blink/core/addon"
 	"github.com/toaweme/log"
+
+	"github.com/toaweme/blink/core/addon"
 )
 
-// dockerEvent is the subset of `docker events --format '{{json .}}'` we care
-// about. Type=="container" events carry compose metadata in Actor.Attributes.
+// dockerEvent is the consumed subset of `docker events --format '{{json .}}'`. Type=="container" events carry compose metadata in Actor.Attributes.
 type dockerEvent struct {
 	Type   string `json:"Type"`
 	Action string `json:"Action"`
@@ -22,7 +22,7 @@ type dockerEvent struct {
 	} `json:"Actor"`
 }
 
-// composePsRow is the subset of `docker compose ps --format json` we consume.
+// composePsRow is the consumed subset of `docker compose ps --format json`.
 type composePsRow struct {
 	Name       string             `json:"Name"`
 	Service    string             `json:"Service"`
@@ -39,9 +39,9 @@ type composePublisher struct {
 	Protocol      string `json:"Protocol"`
 }
 
-// composeRows runs `docker compose ps --format json` once and returns the
-// parsed rows. Shared by seedStatus and waitForPublishedPorts.
+// composeRows runs `docker compose ps --format json` and returns the parsed rows. Shared by seedStatus and waitForPublishedPorts.
 func (m *Manager) composeRows(ctx context.Context) ([]composePsRow, error) {
+	//nolint:gosec // docker CLI args are derived from validated config, not user input
 	cmd := exec.CommandContext(ctx, "docker", "compose", "-p", m.project, "-f", m.composeFile, "ps", "--format", "json")
 	cmd.Dir = m.workDir
 	out, err := cmd.Output()
@@ -62,8 +62,7 @@ func (m *Manager) seedStatus(ctx context.Context) error {
 	return nil
 }
 
-// parseComposePs handles both the JSON-array form (older `docker compose`) and
-// the NDJSON form (newer). Returns rows in either case.
+// parseComposePs handles both the JSON-array form (older `docker compose`) and the NDJSON form (newer).
 func parseComposePs(data []byte) ([]composePsRow, error) {
 	trimmed := skipWhitespace(data)
 	if len(trimmed) == 0 {
@@ -97,8 +96,7 @@ func skipWhitespace(b []byte) []byte {
 	return nil
 }
 
-// bytes is a tiny helper that gives us an io.Reader without importing the
-// bytes package (kept local to avoid name shadow with this var name).
+// byteReader provides an io.Reader over a byte slice without importing the bytes package.
 type byteReader struct {
 	b []byte
 	i int
@@ -116,6 +114,7 @@ func (r *byteReader) Read(p []byte) (int, error) {
 func bytes(b []byte) io.Reader { return &byteReader{b: b} }
 
 func (m *Manager) runEventStream(ctx context.Context) {
+	//nolint:gosec // docker CLI args are derived from validated config, not user input
 	cmd := exec.CommandContext(ctx, "docker", "events",
 		"--filter", "label=com.docker.compose.project="+m.project,
 		"--filter", "type=container",
@@ -164,8 +163,7 @@ func (m *Manager) runEventStream(ctx context.Context) {
 	}
 }
 
-// mapEventAction translates a docker container event verb into a supervisor
-// status string. Returns "" for events we don't surface (exec_*, top, etc).
+// mapEventAction translates a docker container event verb into a supervisor status string. Returns "" for events that aren't surfaced (exec_*, top, etc).
 func mapEventAction(action string) string {
 	switch action {
 	case "start":

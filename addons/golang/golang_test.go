@@ -89,7 +89,7 @@ func TestPrepareWorkspaceWatches(t *testing.T) {
 
 	wantShared := filepath.Join(dir, "shared")
 	assert.Contains(t, plan.ExtraWatches, wantShared)
-	// service's own dir should NOT be in ExtraWatches (already watched via Dir).
+	// service's own dir must not be in ExtraWatches (already watched via Dir).
 	wantAPI := filepath.Join(dir, "api")
 	assert.NotContains(t, plan.ExtraWatches, wantAPI)
 }

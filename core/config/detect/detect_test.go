@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// writeFiles materialises a map of relative path -> content under a fresh temp
+// writeFiles materializes a map of relative path -> content under a fresh temp
 // dir and returns the dir. Nested paths are created as needed.
 func writeFiles(t *testing.T, files map[string]string) string {
 	t.Helper()

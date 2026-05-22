@@ -1,11 +1,3 @@
-// Package addon defines the pluggable per-ecosystem backends that the
-// supervisor consults when starting a service.
-//
-// A Runtime contributes a Plan that can do two things: provide a defaults
-// overlay merged into the user's Service config (pure-default runtimes like
-// "go" and "node"), and/or hand back a Manager that owns the service's
-// lifecycle (full runtimes like "docker"). When Manager is nil, the supervisor
-// runs its standard build→run shell lifecycle on the merged service.
 package addon
 
 import (
@@ -14,7 +6,11 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
-// Runtime is the interface every backend implements.
+// Runtime is the per-ecosystem backend the supervisor consults when starting a
+// service. It contributes a Plan with a defaults overlay (pure-default runtimes
+// like "go") and/or a Manager that owns the lifecycle (full runtimes like
+// "docker"). When Manager is nil the supervisor runs its standard build-run
+// shell lifecycle.
 type Runtime interface {
 	// Name is the value users write under `runtime:` in blink.yaml.
 	Name() string
@@ -34,10 +30,9 @@ type Plan struct {
 	Manager Manager
 }
 
-// Manager owns a service lifecycle for "full" runtimes. The supervisor calls
-// Start once at boot and Stop on shutdown; restarts come through the same
-// pair. Status changes for the service itself and any nested children flow
-// out through Events.
+// Manager owns a service lifecycle for full runtimes. The supervisor calls
+// Start once at boot and Stop on shutdown; restarts come through Restart.
+// Status changes for the service and its children flow out through Events.
 type Manager interface {
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error

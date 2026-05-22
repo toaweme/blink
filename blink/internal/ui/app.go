@@ -1,3 +1,6 @@
+// Package ui provides blink's rendering backends (the full-screen TUI, the
+// plain stdout printer, and the headless supervisor) and the App that selects
+// among them based on config.
 package ui
 
 import (
@@ -14,8 +17,8 @@ import (
 
 // UserInterface is one of the rendering backends blink supports.
 type UserInterface interface {
-	Run(config config.Config) error
-	Stop(config config.Config) error
+	Run(cfg config.Config) error
+	Stop(cfg config.Config) error
 }
 
 // App selects a UserInterface based on the config and handles signal shutdown.
@@ -23,6 +26,7 @@ type App struct {
 	UIs map[string]UserInterface
 }
 
+// NewApp returns an App that dispatches to one of the given UI backends.
 func NewApp(uis map[string]UserInterface) *App { return &App{UIs: uis} }
 
 // DefaultRegistry returns the UI implementations shipped with blink. The
@@ -38,34 +42,34 @@ func DefaultRegistry(reg *addon.Registry) map[string]UserInterface {
 
 // Run dispatches to the configured UI. When config.UI is unset, it picks "plain"
 // when stdout is not a TTY (e.g. piped output / CI) and "blink" otherwise.
-func (a *App) Run(config config.Config) error {
-	if config.UI == "" {
+func (a *App) Run(cfg config.Config) error {
+	if cfg.UI == "" {
 		if PlainIsAppropriate() {
-			config.UI = "plain"
+			cfg.UI = "plain"
 		} else {
-			config.UI = "blink"
+			cfg.UI = "blink"
 		}
 	}
 	// "none" is the documented yaml spelling of the headless mode.
-	if config.UI == "none" {
-		config.UI = "headless"
+	if cfg.UI == "none" {
+		cfg.UI = "headless"
 	}
 
-	ui, ok := a.UIs[config.UI]
+	ui, ok := a.UIs[cfg.UI]
 	if !ok {
-		return fmt.Errorf("ui %q not found", config.UI)
+		return fmt.Errorf("ui %q not found", cfg.UI)
 	}
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
 	done := make(chan error, 1)
-	go func() { done <- ui.Run(config) }()
+	go func() { done <- ui.Run(cfg) }()
 
 	select {
 	case sig := <-sigs:
 		log.Info("received signal", "signal", sig.String())
-		if err := ui.Stop(config); err != nil {
+		if err := ui.Stop(cfg); err != nil {
 			log.Error("ui stop failed", "error", err)
 		}
 		return <-done

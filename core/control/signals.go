@@ -8,9 +8,8 @@ import (
 	"syscall"
 )
 
-// ParseSignal accepts common signal names (with or without the SIG
-// prefix, case-insensitive) and returns the matching os.Signal. Used by
-// the default Signal verb handler.
+// ParseSignal returns the os.Signal for a common signal name (with or without
+// the SIG prefix, case-insensitive). Used by the default Signal verb handler.
 func ParseSignal(name string) (os.Signal, error) {
 	n := strings.ToUpper(strings.TrimSpace(name))
 	n = strings.TrimPrefix(n, "SIG")

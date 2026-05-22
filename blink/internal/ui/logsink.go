@@ -6,16 +6,16 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/toaweme/blink/core/output"
 	"github.com/toaweme/log"
+
+	"github.com/toaweme/blink/core/output"
 )
 
 // logSink writes captured service output to per-service files under a log
-// directory. It is a plain Hub subscriber, independent of which UI renders:
-// the blink TUI, the plain UI, and headless mode all attach one. Writing is
-// gated by an atomic flag so it can be toggled live (the TUI `L` key) without
-// tearing down the subscription. A disabled sink keeps draining its channel
-// and drops every line, so a slow or paused sink never stalls the hub.
+// directory. It is a Hub subscriber shared by the blink TUI, the plain UI, and
+// headless mode. Writing is gated by an atomic flag so it toggles live (the TUI
+// L key) without tearing down the subscription. A disabled sink keeps draining
+// its channel and drops every line, so it never stalls the hub.
 type logSink struct {
 	logDir  string
 	enabled atomic.Bool
@@ -34,8 +34,8 @@ func newLogSink(logDir string, enabled bool) *logSink {
 // Enabled reports whether the sink is currently writing.
 func (s *logSink) Enabled() bool { return s.enabled.Load() }
 
-// Toggle flips the enabled flag and returns the new state. Used by the TUI
-// `L` keybinding to turn log writing on/off mid-run.
+// Toggle flips the enabled flag and returns the new state. Used by the TUI L
+// keybinding to turn log writing on or off mid-run.
 func (s *logSink) Toggle() bool {
 	on := !s.enabled.Load()
 	s.enabled.Store(on)

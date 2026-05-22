@@ -1,3 +1,4 @@
+// Package config defines blink's configuration model and the paths blink reads and writes.
 package config
 
 import (
@@ -6,12 +7,9 @@ import (
 )
 
 // Paths declares every directory and file blink reads or writes. All paths
-// support env overrides. Relative paths resolve against Config.DirRoot (for
-// project-scoped paths) or $HOME (for user-scoped paths). The loader fills
-// defaults via Paths.Resolve() after loading blink.yaml.
-//
-// Convention: every path blink touches must live here. No os.Getenv for path
-// discovery anywhere else in the codebase.
+// support env overrides. Relative paths resolve against Config.DirRoot (project
+// scoped) or $HOME (user scoped). Paths.Resolve fills defaults after load.
+// Every path blink touches lives here; no os.Getenv for path discovery elsewhere.
 type Paths struct {
 	// ConfigHome is the user-scoped config directory (~/.blink by default).
 	// Holds auth tokens, nag state, CLI preferences. Override: $BLINK_CONFIG_HOME.
@@ -38,9 +36,9 @@ func (p *Paths) Resolve(dirRoot string) {
 		}
 	}
 
-	// ControlDir / LogDir are populated from their env: tags by the cli
-	// layer before Resolve runs, so Resolve only fills the default and
-	// resolves a relative override against dirRoot - no os.Getenv here.
+	// ControlDir / LogDir are populated from their env: tags by the cli layer
+	// before Resolve runs, so Resolve only fills the default and resolves a
+	// relative override against dirRoot.
 	if p.ControlDir == "" {
 		p.ControlDir = filepath.Join(dirRoot, ".blink")
 	} else if !filepath.IsAbs(p.ControlDir) {
@@ -90,20 +88,17 @@ type Config struct {
 	// Set from the CLI via `blink -z` / --zen / $BLINK_ZEN.
 	Zen bool `toml:"zen,omitempty" json:"zen,omitempty" yaml:"zen,omitempty"`
 	// ForceShutdown is the project-wide default for Service.ForceShutdown.
-	// When true (the default when this field is nil), every service whose own
-	// ForceShutdown isn't set explicitly will have its declared Ports scanned
-	// and any owning process killed before the service starts. Override on a
-	// per-service basis with Service.ForceShutdown.
+	// When true (the default when nil), every service that does not set its own
+	// ForceShutdown has its declared Ports scanned and any owning process killed
+	// before start. Override per service with Service.ForceShutdown.
 	ForceShutdown *bool `toml:"force_shutdown,omitempty" json:"force_shutdown,omitempty" yaml:"force_shutdown,omitempty"`
-	// Control configures the local shell-proxy. Disabled (zero value) by
-	// default - `blink run` behaves exactly as before. When enabled, a Unix
-	// socket lets other processes on the machine send stdin or signals to
-	// supervised services (see `blink exec <target> stdin` / `blink exec <target> signal`).
+	// Control configures the local shell-proxy, disabled by default. When
+	// enabled, a Unix socket lets other processes send stdin or signals to
+	// supervised services.
 	Control Control `toml:"control,omitempty" json:"control,omitempty" yaml:"control,omitempty"`
-	// Logs configures per-service log-file writing. Independent of the UI:
-	// any mode (blink TUI, plain, headless) writes <LogDir>/<svc>.log while
-	// log writing is enabled. Flags (--logs/--no-logs) and the TUI `L` toggle
-	// override this default at runtime.
+	// Logs configures per-service log-file writing, independent of the UI. While
+	// enabled, every mode writes <LogDir>/<svc>.log. The --logs/--no-logs flags
+	// and the TUI `L` toggle override this default at runtime.
 	Logs LogConfig `toml:"logs,omitempty" json:"logs,omitempty" yaml:"logs,omitempty"`
 	// ConfigPath is the absolute path the config was loaded from. Populated
 	// by the loader at runtime and used by features that need to write the
@@ -114,11 +109,8 @@ type Config struct {
 	Runtime RuntimeOptions `toml:"-" json:"-" yaml:"-"`
 }
 
-// RuntimeOptions are CLI-only knobs that shape a single `blink run`
-// invocation. Distinct from yaml-level config because they are not
-// part of the project definition - they describe how to run it this
-// time. Populated by command_run from --services, consumed by ui/blink
-// and ui/plain.
+// RuntimeOptions are CLI-only knobs shaping a single `blink run` invocation.
+// They are not part of the project definition and are never serialized.
 type RuntimeOptions struct {
 	// Services restricts which services start, by name. Empty = all.
 	Services []string
@@ -142,12 +134,12 @@ func (c Config) LogWriteEnabled() bool {
 	return true
 }
 
-// Control configures local TUI behaviour.
+// Control configures local TUI behavior.
 type Control struct {
-	// Keys rebinds TUI keys onto the closed action catalog. Each entry is
-	// key (bubbletea form, e.g. "r", "ctrl+c", "left") -> action name (see
-	// control.Actions()). An empty value unbinds the key. Validated at load
-	// time; an unknown action name is a hard error. Example:
+	// Keys rebinds TUI keys onto the action catalog. Each entry maps a key
+	// (bubbletea form, e.g. "r", "ctrl+c") to an action name (see
+	// control.Actions()); an empty value unbinds the key. Validated at load
+	// time: an unknown action name is a hard error. Example:
 	//   control:
 	//     keys: { r: restart, R: restart-all, q: quit, z: toggle-zen }
 	Keys map[string]string `toml:"keys,omitempty" json:"keys,omitempty" yaml:"keys,omitempty"`
@@ -175,11 +167,9 @@ type Service struct {
 	Env    map[string]string `toml:"env,omitempty" json:"env,omitempty" yaml:"env,omitempty"`
 	// Logging configures per-service log handling (v1 honors Level only).
 	Logging Logging `toml:"logging,omitempty" json:"logging,omitempty" yaml:"logging,omitempty"`
-	// Ports lists TCP ports this service binds. blink scans them before start
-	// (when ForceShutdown is on) and kills any process already listening so a
-	// previous hanging child doesn't break the next run. This is project drift
-	// (the dev server is what really chooses the port), but it makes the
-	// developer experience reliable across crashes.
+	// Ports lists TCP ports this service binds. When ForceShutdown is on, blink
+	// scans them before start and kills any process already listening, so a
+	// previous hanging child does not break the next run.
 	Ports []Port `toml:"ports,omitempty" json:"ports,omitempty" yaml:"ports,omitempty"`
 	// ForceShutdown overrides Config.ForceShutdown for this service. Nil =
 	// inherit. true = scan Ports and kill any listener before start. false =
@@ -187,9 +177,8 @@ type Service struct {
 	ForceShutdown *bool `toml:"force_shutdown,omitempty" json:"force_shutdown,omitempty" yaml:"force_shutdown,omitempty"`
 }
 
-// DefaultComposeFile is the compose file the docker runtime falls back to when
-// DockerConfig.File is empty. Config detection compares against it so a
-// detected docker service only writes File when it differs from this default.
+// DefaultComposeFile is the compose file the docker runtime uses when
+// DockerConfig.File is empty. Detection writes File only when it differs.
 const DefaultComposeFile = "docker-compose.yml"
 
 // DockerConfig configures a `runtime: docker` service. The runtime drives
@@ -210,16 +199,14 @@ type DockerConfig struct {
 	// Wait toggles `docker compose up --wait`. Default: true.
 	Wait *bool `toml:"wait,omitempty" json:"wait,omitempty" yaml:"wait,omitempty"`
 	// StopOnExit makes blink stop the containers it started when it exits.
-	// Default: false - containers persist between blink runs so the next
-	// startup reuses warm databases and is near-instant. Pre-existing
-	// containers (ones blink didn't start) are never touched either way.
+	// Default: false, so containers persist between runs and the next startup
+	// reuses warm databases. Pre-existing containers are never touched.
 	StopOnExit bool `toml:"stop_on_exit,omitempty" json:"stop_on_exit,omitempty" yaml:"stop_on_exit,omitempty"`
 }
 
-// IsZero reports whether every field is its zero value. The writer uses it to
-// drop an all-default docker block: a nil *DockerConfig is omitted, but a
-// pointer to an empty struct would otherwise serialise as "docker: {}". yaml.v3
-// also honours this (IsZeroer) for omitempty.
+// IsZero reports whether every field is its zero value, so the writer drops an
+// all-default docker block instead of serializing "docker: {}". yaml.v3 honors
+// this (IsZeroer) for omitempty.
 func (d DockerConfig) IsZero() bool {
 	return d.File == "" && d.Project == "" && len(d.Services) == 0 &&
 		len(d.Logs) == 0 && d.Wait == nil && !d.StopOnExit
@@ -251,26 +238,26 @@ type Command struct {
 	Service bool `toml:"service,omitempty" json:"service,omitempty" yaml:"service,omitempty"`
 }
 
+// Commands groups a service's optional build and run commands.
 type Commands struct {
 	Build *Command `toml:"build,omitempty" json:"build,omitempty" yaml:"build,omitempty"`
 	Run   *Command `toml:"run,omitempty" json:"run,omitempty" yaml:"run,omitempty"`
 }
 
-// Fs configures the file change watcher for a service.
-//
-// Include accepts paths (resolved against DirRoot) - they are added as recursive
-// watch roots, enabling cross-module watches like "../schema". Extensions filter
-// matched files; Exclude globs subtract from the matched set.
+// Fs configures the file change watcher for a service. Include paths (resolved
+// against DirRoot) are added as recursive watch roots, enabling cross-module
+// watches like "../schema". Extensions filter matched files; Exclude globs
+// subtract from the matched set.
 type Fs struct {
 	Extensions []string `toml:"extensions,omitempty" json:"extensions,omitempty" yaml:"extensions,omitempty"`
 	Include    []string `toml:"include,omitempty" json:"include,omitempty" yaml:"include,omitempty"`
 	Exclude    []string `toml:"exclude,omitempty" json:"exclude,omitempty" yaml:"exclude,omitempty"`
 }
 
-// DefaultExcludeDirs are directory names blink subtracts from every watcher
-// regardless of service config, matched at any depth. They're the single
-// source the watcher's default globs and config detection both build on, so a
-// detected service never re-emits an exclude blink already applies.
+// DefaultExcludeDirs are directory names blink subtracts from every watcher at
+// any depth, regardless of service config. The watcher's default globs and
+// config detection both build on this, so a detected service never re-emits an
+// exclude blink already applies.
 var DefaultExcludeDirs = []string{".git", "node_modules", "dist", "build", ".next", ".idea", ".vscode"}
 
 // DefaultExcludes returns the glob patterns blink applies to every watcher:

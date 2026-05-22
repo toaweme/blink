@@ -1,3 +1,5 @@
+// Package app wires the blink CLI commands (run, init, edit) to the core
+// supervisor, config loader, and interactive config picker.
 package app
 
 import (
@@ -14,10 +16,12 @@ import (
 	"github.com/toaweme/blink/core/config/loader"
 )
 
+// EditConfig holds the flags the edit command accepts.
 type EditConfig struct {
 	Config string `arg:"config" short:"c" env:"BLINK_CONFIG" help:"Path to blink.yaml. Walks up from cwd when empty."`
 }
 
+// EditCommand interactively edits an existing blink.yaml.
 type EditCommand struct {
 	cli.BaseCommand[EditConfig]
 	reg *addon.Registry
@@ -25,22 +29,22 @@ type EditCommand struct {
 
 var _ cli.Command[EditConfig] = (*EditCommand)(nil)
 
-// NewEditCommand builds the edit command. reg supplies the runtimes used by the
-// picker's port-probe key.
+// NewEditCommand builds the edit command using reg for the picker's port-probe key.
 func NewEditCommand(reg *addon.Registry) *EditCommand {
 	return &EditCommand{BaseCommand: cli.NewBaseCommand[EditConfig](), reg: reg}
 }
 
+// Run loads the existing config, runs the picker, and writes the edited config back to its path.
 func (c *EditCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
 	cfg, path, err := loader.Load(options.Cwd, c.Inputs.Config)
 	if err != nil {
 		return fmt.Errorf("failed to load config (run `blink init` first?): %w", err)
 	}
 
-	// re-detect merges any newly added services into the picker on `d`.
+	// re-detect (`d`) merges newly added services into the picker.
 	detectFn := func() ([]config.Service, error) { return scanServices(options.Cwd) }
 
-	// cancel any probe still running in the background when edit returns.
+	// cancel any background probe still running when edit returns.
 	probeCtx, cancelProbes := context.WithCancel(context.Background())
 	defer cancelProbes()
 	probeFn := func(svc config.Service) ([]config.Port, error) {
@@ -65,8 +69,10 @@ func (c *EditCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
 	return nil
 }
 
+// Validate reports whether the parsed flags are valid.
 func (c *EditCommand) Validate(_ map[string]any) error { return nil }
 
+// Help returns the one-line description shown in the command list.
 func (c *EditCommand) Help() string {
 	return "Interactively add, remove, or modify entries in an existing blink.yaml."
 }

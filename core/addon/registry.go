@@ -9,14 +9,14 @@ import (
 )
 
 // Registry is the single place every addon the binary ships is wired in:
-// runtimes, lifecycle hooks, and the client/host halves of remote
-// transports. The CLI's main builds one and registers explicitly - no
-// init() side-effects, no blank imports. blink-mini registers only
-// runtimes + hooks, so the transport addons stay out of its import graph.
+// runtimes, lifecycle hooks, and the client/host halves of remote transports.
+// The CLI's main builds one and registers explicitly: no init() side-effects,
+// no blank imports. blink-mini registers only runtimes and hooks, keeping the
+// transport addons out of its import graph.
 //
-// A nil *Registry is not valid for runtime/transport lookups, but the hook
-// dispatch helpers tolerate it (DispatchHooks / HasHooks are no-ops) so the
-// supervisor can hold a registry that simply has no hooks.
+// A nil *Registry is invalid for runtime/transport lookups, but the hook
+// dispatch helpers (DispatchHooks, HasHooks) tolerate it as no-ops so the
+// supervisor can hold a registry that has no hooks.
 type Registry struct {
 	mu          sync.RWMutex
 	runtimes    map[string]Runtime

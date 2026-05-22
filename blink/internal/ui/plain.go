@@ -15,24 +15,24 @@ import (
 	"github.com/charmbracelet/x/term"
 	"github.com/mattn/go-isatty"
 
+	"github.com/toaweme/log"
+
 	"github.com/toaweme/blink/core/addon"
 	"github.com/toaweme/blink/core/config"
 	"github.com/toaweme/blink/core/output"
 	"github.com/toaweme/blink/core/supervisor"
-	"github.com/toaweme/log"
 )
 
 const (
 	plainBufferLines = 5000
-	// refreshCooldown rate-limits the `r` redraw - pressing the key fast
-	// otherwise floods the terminal and beats the user up with reflows.
+	// refreshCooldown rate-limits the r redraw; pressing the key fast otherwise
+	// floods the terminal with reflows.
 	refreshCooldown = 700 * time.Millisecond
 )
 
-// Plain prints prefixed log lines from all services interleaved on stdout. It
-// is the default when stdout is not a TTY. When stdin *is* a TTY (e.g. the
-// user explicitly picked plain UI on a real terminal with -u plain), the UI
-// also listens for an `r` keypress to redraw the buffered history.
+// Plain prints prefixed log lines from all services interleaved on stdout. It is
+// the default when stdout is not a TTY. When stdin is a TTY (e.g. -u plain on a
+// real terminal), it also listens for an r keypress to redraw buffered history.
 type Plain struct {
 	out io.Writer
 	reg *addon.Registry
@@ -47,6 +47,8 @@ type Plain struct {
 
 var _ UserInterface = (*Plain)(nil)
 
+// NewPlain returns a Plain UI that writes to stdout, backed by the given
+// addon registry.
 func NewPlain(reg *addon.Registry) *Plain {
 	return &Plain{out: os.Stdout, reg: reg}
 }
@@ -56,6 +58,8 @@ func PlainIsAppropriate() bool {
 	return !isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())
 }
 
+// Run starts the supervisor and streams prefixed log lines to stdout, blocking
+// until the event stream closes.
 func (p *Plain) Run(cfg config.Config) error {
 	sup, err := supervisor.New(cfg, p.reg)
 	if err != nil {
@@ -68,11 +72,10 @@ func (p *Plain) Run(cfg config.Config) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Subscribe before Start so a fast service's boot-time status/log events
-	// aren't dropped: the Hub only delivers to subscribers that already exist,
-	// and a shell/go service can reach "running"/"crashed" before any consumer
-	// is registered. The buffered subscription channels latch the events; the
-	// consumers below drain them. See blink.go for the same ordering.
+	// subscribe before Start so a fast service's boot-time status/log events
+	// aren't dropped: the Hub only delivers to existing subscribers, and a
+	// shell/go service can reach "running"/"crashed" before any consumer is
+	// registered. The buffered channels latch the events. See blink.go.
 	sub, cancelSub := sup.Subscribe()
 	defer cancelSub()
 
@@ -95,15 +98,15 @@ func (p *Plain) Run(cfg config.Config) error {
 		return err
 	}
 
-	// raw-stdin reader for `r` refresh - only when stdin is an interactive
+	// raw-stdin reader for the r refresh, only when stdin is an interactive
 	// terminal. Restoring cooked mode is critical; defer handles all exits.
 	stopInput, raw := p.maybeStartInputLoop(ctx)
 	defer stopInput()
 
-	// raw mode clears the tty's OPOST/ONLCR, so the driver no longer turns
-	// LF into CRLF and printed lines staircase. Translate it ourselves while
-	// raw, but only when stdout is the terminal (piped output stays plain).
-	// Done before the consumers start so emit() never races on p.out.
+	// raw mode clears the tty's OPOST/ONLCR, so the driver no longer turns LF
+	// into CRLF and printed lines staircase. Translate it ourselves while raw,
+	// but only when stdout is the terminal (piped output stays plain). Done
+	// before the consumers start so emit() never races on p.out.
 	if raw && isatty.IsTerminal(os.Stdout.Fd()) {
 		p.out = &crlfWriter{w: os.Stdout}
 	}
@@ -132,9 +135,9 @@ func (p *Plain) consumeEvents(sub output.Subscription) {
 		if ev.Child != "" {
 			label = ev.Service + "/" + ev.Child
 		}
-		p.emit(p.format(label, fmt.Sprintf("[status] %s", ev.Status)))
+		p.emit(p.format(label, "[status] "+ev.Status))
 		if ev.Err != "" {
-			p.emit(p.format(label, fmt.Sprintf("[error]  %s", ev.Err)))
+			p.emit(p.format(label, "[error]  "+ev.Err))
 		}
 	}
 }
@@ -151,6 +154,7 @@ func (p *Plain) consumeLogs(sub output.Subscription) {
 	}
 }
 
+// Stop tears down the supervisor.
 func (p *Plain) Stop(_ config.Config) error {
 	p.mu.Lock()
 	sup := p.sup
@@ -166,8 +170,8 @@ func (p *Plain) format(label, line string) string {
 	return serviceStyle(label).Render("["+label+"]") + " " + line
 }
 
-// emit prints a single rendered line and appends it to the in-memory buffer
-// used by the `r` refresh. Buffer is a sliding window - old lines drop.
+// emit prints a single rendered line and appends it to the in-memory buffer used
+// by the r refresh. The buffer is a sliding window; old lines drop.
 func (p *Plain) emit(line string) {
 	fmt.Fprintln(p.out, line)
 	p.bufMu.Lock()
@@ -179,7 +183,7 @@ func (p *Plain) emit(line string) {
 }
 
 // refresh clears the screen and reprints every buffered line. Rate-limited so
-// the user can't hold `r` and pin the CPU on terminal repainting.
+// holding r can't pin the CPU on repainting.
 func (p *Plain) refresh() {
 	p.bufMu.Lock()
 	if time.Since(p.lastRef) < refreshCooldown {
@@ -190,16 +194,16 @@ func (p *Plain) refresh() {
 	lines := append([]string(nil), p.buffer...)
 	p.bufMu.Unlock()
 
-	// ESC[2J clear screen + ESC[H move cursor to home - standard ANSI, works
-	// on any vt100-compatible terminal (which is everyone we care about).
+	// ESC[2J clears the screen, ESC[H homes the cursor: standard ANSI, works on
+	// any vt100-compatible terminal.
 	fmt.Fprint(p.out, "\x1b[2J\x1b[H")
 	fmt.Fprintln(p.out, strings.Join(lines, "\n"))
 }
 
-// maybeStartInputLoop sets stdin to raw mode and spawns a goroutine that
-// reacts to single-key inputs. Returns a cleanup func that restores cooked
-// mode (caller must defer it) and whether raw mode was entered. When stdin
-// isn't a TTY (the typical CI case), it is a no-op and reports false.
+// maybeStartInputLoop sets stdin to raw mode and spawns a goroutine that reacts
+// to single-key inputs. Returns a cleanup func that restores cooked mode (caller
+// must defer it) and whether raw mode was entered. When stdin isn't a TTY it is
+// a no-op and reports false.
 func (p *Plain) maybeStartInputLoop(ctx context.Context) (func(), bool) {
 	fd := int(os.Stdin.Fd())
 	if !isatty.IsTerminal(uintptr(fd)) {
@@ -207,7 +211,7 @@ func (p *Plain) maybeStartInputLoop(ctx context.Context) (func(), bool) {
 	}
 	state, err := term.MakeRaw(uintptr(fd))
 	if err != nil {
-		// not fatal - just means no `r` refresh. Log and move on.
+		// not fatal: just means no r refresh.
 		log.Warn("plain ui: failed to put stdin in raw mode; refresh disabled", "error", err)
 		return func() {}, false
 	}
@@ -231,7 +235,9 @@ func (p *Plain) maybeStartInputLoop(ctx context.Context) (func(), bool) {
 				sup := p.sup
 				p.mu.Unlock()
 				if sup != nil {
-					_ = sup.Stop(context.Background())
+					// detached on purpose: a quit-key shutdown must run its full
+					// teardown even though the run ctx is about to be canceled.
+					_ = sup.Stop(context.Background()) //nolint:contextcheck // shutdown must not inherit the about-to-cancel run ctx
 				}
 				return
 			}
@@ -240,11 +246,10 @@ func (p *Plain) maybeStartInputLoop(ctx context.Context) (func(), bool) {
 	return func() { _ = term.Restore(uintptr(fd), state) }, true
 }
 
-// crlfWriter translates bare LF into CRLF. Plain mode puts the terminal in
-// raw mode for single-key input, which clears the tty's OPOST/ONLCR output
+// crlfWriter translates bare LF into CRLF. Plain mode puts the terminal in raw
+// mode for single-key input, which clears the tty's OPOST/ONLCR output
 // translation; without this every printed line would staircase. Writes are
-// serialized so the concurrent status/log emitters never interleave a
-// half-translated line.
+// serialized so concurrent emitters never interleave a half-translated line.
 type crlfWriter struct {
 	mu sync.Mutex
 	w  io.Writer
@@ -269,7 +274,7 @@ func (c *crlfWriter) Write(p []byte) (int, error) {
 }
 
 // palette is a small set of foreground colors deterministically assigned to
-// service names. The mapping is stable across runs.
+// service names, stable across runs.
 var palette = []lipgloss.Color{
 	lipgloss.Color("39"),  // cyan
 	lipgloss.Color("214"), // orange

@@ -10,7 +10,7 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
-// rustDetector recognises a Cargo project and emits a shell-runtime service
+// rustDetector recognizes a Cargo project and emits a shell-runtime service
 // that builds and runs the crate via cargo.
 type rustDetector struct{}
 

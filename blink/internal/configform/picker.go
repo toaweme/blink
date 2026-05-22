@@ -12,29 +12,29 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/toaweme/blink/core/config"
 	"github.com/toaweme/log"
+
+	"github.com/toaweme/blink/core/config"
 )
 
 // ErrCanceled is returned by PickServices when the user quits the picker
 // without confirming (q / esc / ctrl+c). Callers treat it as "write nothing".
 var ErrCanceled = errors.New("canceled")
 
-// PickServices runs the compact service picker: one screen listing every
-// service with a select checkbox, where → drills into a per-service editor
-// instead of forcing every service through a wizard and enter saves. It returns
-// the selected (and possibly edited or probed) services.
+// PickServices runs the service picker: one screen listing every service with a
+// select checkbox, where → drills into a per-service editor and enter saves. It
+// returns the selected (and possibly edited or probed) services.
 //
 // detectFn, when non-nil, enables the re-detect key (`d`) and is called to fetch
-// fresh services to merge by name. probeFn, when non-nil, enables the runtime
-// port-discovery key (`p`): pressing it probes every selected service
-// concurrently, animating a spinner per row, and fills in the ports each one
-// bound. Probes outlive a trip into the editor (they're owned by a manager that
-// spans picker re-runs), so going in and back doesn't restart them.
+// fresh services to merge by name. probeFn, when non-nil, enables the port-
+// discovery key (`p`): it probes every selected service concurrently, animating
+// a spinner per row, and fills in the ports each bound. Probes outlive a trip
+// into the editor (owned by a manager that spans picker re-runs), so going in
+// and back doesn't restart them.
 func PickServices(title string, services []config.Service, detectFn func() ([]config.Service, error), probeFn func(config.Service) ([]config.Port, error)) ([]config.Service, error) {
-	items := make([]pickItem, len(services))
-	for i, s := range services {
-		items[i] = pickItem{svc: s, keep: true}
+	items := make([]pickItem, 0, len(services))
+	for _, s := range services {
+		items = append(items, pickItem{svc: s, keep: true})
 	}
 	cursor := 0
 
@@ -49,7 +49,10 @@ func PickServices(title string, services []config.Service, detectFn func() ([]co
 		if err != nil {
 			return nil, fmt.Errorf("failed to run service picker: %w", err)
 		}
-		fp := out.(picker)
+		fp, ok := out.(picker)
+		if !ok {
+			return nil, fmt.Errorf("unexpected picker model type %T", out)
+		}
 		items = fp.items
 		cursor = clamp(fp.cursor, 0, len(items)-1)
 
@@ -125,8 +128,7 @@ const (
 	resDetect
 )
 
-// probeOutcome is a finished probe's result, stored in the manager by service
-// name.
+// probeOutcome is a finished probe's result, stored by service name.
 type probeOutcome struct {
 	ports []config.Port
 	err   error
@@ -135,7 +137,7 @@ type probeOutcome struct {
 // probeManager owns the background probe goroutines and their results. It lives
 // across picker re-runs (a trip into the editor quits and rebuilds the picker),
 // so an in-flight probe keeps running and its result is still here when the
-// picker comes back - no restart needed. It hushes logs while any probe runs.
+// picker comes back. It hushes logs while any probe runs.
 type probeManager struct {
 	fn func(config.Service) ([]config.Port, error)
 
@@ -150,8 +152,8 @@ func newProbeManager(fn func(config.Service) ([]config.Port, error)) *probeManag
 	return &probeManager{fn: fn, running: map[string]bool{}, results: map[string]probeOutcome{}}
 }
 
-// start launches a probe for each service not already running. Already-probed
-// services re-run (a fresh reading).
+// start launches a probe for each service not already running, re-running
+// already-probed services for a fresh reading.
 func (pm *probeManager) start(svcs []config.Service) {
 	pm.mu.Lock()
 	var toRun []config.Service
@@ -211,9 +213,9 @@ func (pm *probeManager) snapshot() (map[string]bool, map[string]probeOutcome) {
 }
 
 // picker is the bubbletea model for one pass over the service list. Probing runs
-// in the background via the manager and is reflected on each spinner tick (no
-// screen switch); edit/add/detect quit and are handled by the outer
-// PickServices loop, which re-runs a fresh picker.
+// in the background via the manager and is reflected on each spinner tick;
+// edit/add/detect quit and are handled by the outer PickServices loop, which
+// re-runs a fresh picker.
 type picker struct {
 	title       string
 	items       []pickItem
@@ -249,10 +251,9 @@ func (m picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
-		// repaint over a cleared buffer: when the terminal shrinks, the old
-		// (taller/wider) frame leaves artifacts the diff renderer won't wipe on
-		// its own. This doesn't disturb an in-flight spinner tick (that chain
-		// runs on its own TickMsg cmds).
+		// repaint over a cleared buffer: when the terminal shrinks, the old frame
+		// leaves artifacts the diff renderer won't wipe. This doesn't disturb an
+		// in-flight spinner tick (that chain runs on its own TickMsg cmds).
 		return m, tea.ClearScreen
 
 	case spinner.TickMsg:
@@ -294,7 +295,7 @@ func (m picker) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "left", "h":
 		// reserved for "back"; the per-service editor handles its own back/cancel,
-		// so at the list level there's nothing to collapse - a deliberate no-op.
+		// so at the list level there's nothing to collapse: a deliberate no-op.
 	case "p":
 		if m.probes != nil {
 			m.probes.start(m.selectedServices())
@@ -325,7 +326,7 @@ func (m picker) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // reconcile folds the manager's current running set and results into the row
 // states (and ports), so the view reflects probes that progressed while this
 // picker was rebuilt or between ticks.
-func (m *picker) reconcile() {
+func (m picker) reconcile() {
 	if m.probes == nil {
 		return
 	}
@@ -457,6 +458,8 @@ func (m picker) renderPorts(it pickItem) string {
 		return dim.Render("no port")
 	case probeFailed:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("131")).Render("n/a")
+	default:
+		// probeIdle / probeDone: render the (possibly probe-filled) ports below.
 	}
 	if len(it.svc.Ports) == 0 {
 		return dim.Render("—")
@@ -530,9 +533,8 @@ func runtimeLabel(rt string) string {
 	return rt
 }
 
-// serviceCommand is the one-line invocation shown per row, so two services that
-// share a package (e.g. several root-package go binaries) are still told apart
-// by their args.
+// serviceCommand is the one-line invocation shown per row, including args so two
+// services that share a package are still distinguishable.
 func serviceCommand(svc config.Service) string {
 	switch svc.Runtime {
 	case "go":
@@ -558,8 +560,8 @@ func serviceCommand(svc config.Service) string {
 	}
 }
 
-// renderPortList styles a service's ports: literals as ":8080" (port colour),
-// env references as the bare var name (env colour, no colon since the value
+// renderPortList styles a service's ports: literals as ":8080" (port color),
+// env references as the bare var name (env color, no colon since the value
 // isn't known here).
 func renderPortList(ports []config.Port) string {
 	lit := lipgloss.NewStyle().Foreground(portColor)
@@ -611,25 +613,24 @@ func uniqueName(base string, taken map[string]bool) string {
 	}
 }
 
-// truncate clips s to max runes, marking the cut with an ellipsis. A max of 0
-// or less yields "" so a narrow terminal never wraps the row.
-func truncate(s string, max int) string {
-	if max <= 0 {
+// truncate clips s to maxLen runes, marking the cut with an ellipsis. A maxLen
+// of 0 or less yields "" so a narrow terminal never wraps the row.
+func truncate(s string, maxLen int) string {
+	if maxLen <= 0 {
 		return ""
 	}
 	r := []rune(s)
-	if len(r) <= max {
+	if len(r) <= maxLen {
 		return s
 	}
-	if max == 1 {
+	if maxLen == 1 {
 		return "…"
 	}
-	return string(r[:max-1]) + "…"
+	return string(r[:maxLen-1]) + "…"
 }
 
 // padRight pads s with spaces to a display width of n columns, measuring in
-// runes (not bytes) so multibyte content like a middle dot or em dash doesn't
-// shift the columns after it.
+// runes (not bytes) so multibyte content doesn't shift the columns after it.
 func padRight(s string, n int) string {
 	w := utf8.RuneCountInString(s)
 	if w >= n {

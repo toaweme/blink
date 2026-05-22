@@ -25,6 +25,7 @@ type RunConfig struct {
 	Services []string `arg:"services" short:"s" sep:"," env:"BLINK_SERVICES" help:"Comma-separated list of services to start (subset of blink.yaml). Empty starts all."`
 }
 
+// RunCommand supervises the services defined in blink.yaml with live reload.
 type RunCommand struct {
 	cli.BaseCommand[RunConfig]
 	reg *addon.Registry
@@ -32,10 +33,12 @@ type RunCommand struct {
 
 var _ cli.Command[RunConfig] = (*RunCommand)(nil)
 
+// NewRunCommand builds the run command using reg to supervise services.
 func NewRunCommand(reg *addon.Registry) *RunCommand {
 	return &RunCommand{BaseCommand: cli.NewBaseCommand[RunConfig](), reg: reg}
 }
 
+// Run loads the config, applies the run flags, and starts the supervised UI.
 func (c *RunCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
 	cfg, err := loadRunConfig(options.Cwd, *c.Inputs)
 	if err != nil {
@@ -44,29 +47,29 @@ func (c *RunCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
 	return runUI(cfg, c.reg)
 }
 
+// Validate reports whether the parsed flags are valid.
 func (c *RunCommand) Validate(_ map[string]any) error { return nil }
 
+// Help returns the one-line description shown in the command list.
 func (c *RunCommand) Help() string {
 	return "Run the services defined in blink.yaml with live reload."
 }
 
-// loadRunConfig loads blink.yaml and applies the run flags. When no
-// config is found (and none was named with -c), it falls back to zero-config:
-// scan the project, let the user pick the detected services, and run them
-// ephemerally without writing a file. An explicitly named but missing config,
-// or a parse error, still fails hard.
+// loadRunConfig loads blink.yaml and applies the run flags. When no config is
+// found (and none was named with -c), it falls back to zero-config: scan, let
+// the user pick detected services, and run them ephemerally without writing a
+// file. An explicitly named but missing config, or a parse error, fails hard.
 func loadRunConfig(cwd string, in RunConfig) (config.Config, error) {
 	cfg, _, err := loader.Load(cwd, in.Config)
 	if err != nil {
-		if in.Config == "" && errors.Is(err, os.ErrNotExist) {
-			zc, zerr := zeroConfig(cwd)
-			if zerr != nil {
-				return config.Config{}, zerr
-			}
-			cfg = zc
-		} else {
+		if in.Config != "" || !errors.Is(err, os.ErrNotExist) {
 			return config.Config{}, err
 		}
+		zc, zerr := zeroConfig(cwd)
+		if zerr != nil {
+			return config.Config{}, zerr
+		}
+		cfg = zc
 	}
 
 	if in.UI != "" {
@@ -90,13 +93,11 @@ func loadRunConfig(cwd string, in RunConfig) (config.Config, error) {
 	}
 	cfg.Zen = in.Zen
 
-	// resolve transient run options from CLI flags. The cli lib splits the
-	// comma-separated flag/env into elements via the field's sep tag.
+	// the cli lib splits the comma-separated flag/env via the field's sep tag.
 	cfg.Runtime.Services = in.Services
 
-	// --services scopes the supervised set. Validate names against the
-	// loaded yaml so a typo fails fast instead of silently starting
-	// nothing.
+	// --services scopes the supervised set. Validate names against the loaded
+	// yaml so a typo fails fast instead of silently starting nothing.
 	if len(cfg.Runtime.Services) > 0 {
 		scoped, err := scopeServices(cfg.Services, cfg.Runtime.Services)
 		if err != nil {
@@ -105,7 +106,7 @@ func loadRunConfig(cwd string, in RunConfig) (config.Config, error) {
 		cfg.Services = scoped
 	}
 
-	// Validate control.keys here so a typo fails fast for every UI mode
+	// validate control.keys here so a typo fails fast for every UI mode
 	// (headless / plain never build a keymap, so they'd otherwise skip it).
 	if _, err := control.DefaultKeymap().Merge(cfg.Control.Keys); err != nil {
 		return cfg, err
@@ -119,9 +120,8 @@ func runUI(cfg config.Config, reg *addon.Registry) error {
 	return app.Run(cfg)
 }
 
-// scopeServices filters the configured service list to the names the
-// user passed via --services. Unknown names are an error so a typo
-// can't silently launch nothing.
+// scopeServices filters the configured service list to the names passed via
+// --services. Unknown names are an error so a typo can't silently launch nothing.
 func scopeServices(all []config.Service, want []string) ([]config.Service, error) {
 	idx := make(map[string]config.Service, len(all))
 	for _, s := range all {
@@ -130,7 +130,7 @@ func scopeServices(all []config.Service, want []string) ([]config.Service, error
 	out := make([]config.Service, 0, len(want))
 	for _, name := range want {
 		if name == "" {
-			// tolerate a trailing or doubled comma (web, / web,,api).
+			// tolerate a trailing or doubled comma (web, or web,,api).
 			continue
 		}
 		s, ok := idx[name]

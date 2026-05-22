@@ -1,3 +1,5 @@
+// Package watcher recursively watches a service's source tree with fsnotify
+// and reports debounced change events so the supervisor can restart on edits.
 package watcher
 
 import (
@@ -12,8 +14,9 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/gobwas/glob"
 
-	"github.com/toaweme/blink/core/config"
 	"github.com/toaweme/log"
+
+	"github.com/toaweme/blink/core/config"
 )
 
 const debounceWindow = 200 * time.Millisecond
@@ -47,20 +50,18 @@ type Watcher struct {
 	excludeGlobs []glob.Glob
 	deleteGlobs  []glob.Glob
 
-	// strictInclude is set when every entry in Fs.Include resolves to a file
-	// (not a directory). In that case the user is asking for narrow watching:
-	// only paths matching one of the include globs fire restarts, and we skip
-	// the implicit DirRoot/Service.Dir recursive watch root.
+	// strictInclude is set when every Fs.Include entry resolves to a file, not a
+	// directory. Then only paths matching an include glob fire restarts, and the
+	// implicit DirRoot/Service.Dir recursive root is skipped.
 	strictInclude bool
 
 	fsw *fsnotify.Watcher
 	out chan Event
 
-	// fileCount + dirCount are populated by addRecursive and surfaced
-	// via Stats(). fsnotify only registers directories, but the file
-	// total is the number users actually want to see. seen tracks every
-	// path already counted so overlapping/nested roots and re-walks on
-	// directory-create events don't double-count the same file or dir.
+	// fileCount and dirCount are populated by addRecursive and surfaced via
+	// Stats(). fsnotify registers only directories, but users want the file
+	// total. seen tracks every counted path so overlapping roots and re-walks on
+	// directory-create events don't double-count.
 	mu        sync.Mutex
 	fileCount int
 	dirCount  int
@@ -76,10 +77,9 @@ func (w *Watcher) Stats() (files, dirs int) {
 }
 
 // New constructs a Watcher for the given service. extraRoots are additional
-// absolute paths (typically contributed by a runtime, e.g. go.work modules)
-// that should be watched recursively alongside DirRoot/Service.Dir and
-// Service.Fs.Include. The returned watcher must be started with Start(ctx)
-// before events are produced.
+// absolute paths (typically runtime-contributed, e.g. go.work modules) watched
+// recursively alongside DirRoot/Service.Dir and Service.Fs.Include. The watcher
+// must be started with Start(ctx) before events are produced.
 func New(cfg config.Config, svc config.Service, extraRoots ...string) (*Watcher, error) {
 	if !svc.Reload.Reload && len(svc.Reload.ReloadOnDelete) == 0 {
 		return nil, fmt.Errorf("watcher: service %q has no reload triggers configured", svc.Name)
@@ -145,10 +145,7 @@ func (w *Watcher) Start(ctx context.Context) error {
 // resolveRoots picks the recursive watch roots for this service:
 //   - every directory listed in Fs.Include
 //   - every runtime-contributed extra root
-//   - the implicit DirRoot/Service.Dir, UNLESS Include consists entirely of
-//     file globs (in which case the user wants narrow file-by-file watching;
-//     we still watch each file's parent dir so fsnotify can deliver the event,
-//     and matchesChange enforces strict glob matching).
+//   - the implicit DirRoot/Service.Dir, unless Include is entirely file globs (then each file's parent dir is watched so fsnotify can deliver events, and matchesChange enforces strict glob matching).
 func (w *Watcher) resolveRoots(extra []string) []string {
 	roots := make([]string, 0, 1+len(w.service.Fs.Include)+len(extra))
 
@@ -161,8 +158,7 @@ func (w *Watcher) resolveRoots(extra []string) []string {
 		}
 		info, err := os.Stat(path)
 		if err != nil {
-			// Path doesn't exist yet; the parent dir watch will still pick it
-			// up when it's created.
+			// path doesn't exist yet; the parent dir watch picks it up on create.
 			roots = append(roots, filepath.Dir(path))
 			continue
 		}
@@ -192,14 +188,16 @@ func (w *Watcher) addRecursive(root string) error {
 	var files, dirs int
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil
+			// best-effort walk: skip entries we cannot stat (permission denied,
+			// races with deletes) and keep registering the rest.
+			return nil //nolint:nilerr // intentionally tolerate per-entry walk errors and continue.
 		}
 		if info.IsDir() {
 			if w.isExcluded(path) {
 				return filepath.SkipDir
 			}
-			// always (re-)register the dir watch - fsnotify.Add is idempotent -
-			// but only count it the first time we see this path.
+			// always (re-)register the dir watch (fsnotify.Add is idempotent), but
+			// count it only the first time we see this path.
 			if err := w.fsw.Add(path); err != nil {
 				log.Debug("watcher: failed to add dir", "service", w.service.Name, "path", path, "error", err)
 			}
@@ -301,7 +299,7 @@ func (w *Watcher) loop(ctx context.Context) {
 }
 
 func (w *Watcher) handle(ev fsnotify.Event, change, deletes map[string]struct{}) {
-	// Auto-add new directories so subtree changes get tracked.
+	// auto-add new directories so subtree changes get tracked.
 	if ev.Op&fsnotify.Create != 0 {
 		if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
 			if !w.isExcluded(ev.Name) {
@@ -333,16 +331,15 @@ func (w *Watcher) matchesChange(path string) bool {
 	if !w.extOK(path) {
 		return false
 	}
-	// Strict include mode: when Fs.Include is a set of file globs, the user
-	// wants ONLY those files to trigger restarts. Skip the under-root fallback.
+	// strict include mode: when Fs.Include is a set of file globs, only those
+	// files trigger restarts, so skip the under-root fallback.
 	if w.strictInclude {
 		return anyMatch(w.includeGlobs, path)
 	}
 	if len(w.includeGlobs) > 0 && !anyMatch(w.includeGlobs, path) {
-		// Files inside recursive roots are already implicitly included; the
-		// includeGlobs filter only narrows when explicitly set with file globs.
-		// We treat the implicit root membership as the include for directories
-		// resolved at startup, so paths under those roots pass through.
+		// files inside recursive roots are implicitly included; includeGlobs
+		// only narrows when set with file globs, so paths under those roots
+		// pass through.
 		if !w.underRoot(path) {
 			return false
 		}
@@ -383,8 +380,8 @@ func (w *Watcher) emit(ev Event) {
 	select {
 	case w.out <- ev:
 	default:
-		// Drop on slow consumer to avoid blocking the watch loop. Restarts
-		// coalesce upstream so a lost event is harmless in practice.
+		// drop on a slow consumer to avoid blocking the watch loop; restarts
+		// coalesce upstream so a lost event is harmless.
 		log.Debug("watcher: dropped event (slow consumer)", "service", w.service.Name)
 	}
 }

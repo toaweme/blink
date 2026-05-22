@@ -10,9 +10,9 @@ import (
 	"github.com/toaweme/log"
 )
 
-// runLogStream tails one compose service's logs and pipes each line into the
-// per-child log channel for the TUI/plain UI to consume.
+// runLogStream tails one compose service's logs and pipes each line into the per-child log channel.
 func (m *Manager) runLogStream(ctx context.Context, child string) {
+	//nolint:gosec // docker CLI args are derived from validated config, not arbitrary user input
 	cmd := exec.CommandContext(ctx, "docker", "compose",
 		"-p", m.project, "-f", m.composeFile,
 		"logs", "-f", "--no-color", "--no-log-prefix", child,

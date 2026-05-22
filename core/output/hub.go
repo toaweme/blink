@@ -1,24 +1,25 @@
+// Package output provides the Hub, a fan-out broker that delivers a
+// supervisor's status events and captured log lines to independently
+// subscribed consumers (TUI, plain UI, headless writers, remote mirrors).
 package output
 
 import (
 	"sync"
 
-	"github.com/toaweme/blink/core/protocol"
 	"github.com/toaweme/log"
+
+	"github.com/toaweme/blink/core/protocol"
 )
 
-// Hub is the supervisor's fan-out event bus. Every consumer (the TUI, the
-// plain UI, the headless log writer, the remote-mirror publisher) gets its
-// own Subscription with independent channels; a slow consumer cannot block
-// any other. There is one Hub per running supervisor.
+// Hub is the supervisor's fan-out event bus, one per running supervisor. Every
+// consumer (TUI, plain UI, headless log writer, remote-mirror publisher) gets
+// its own Subscription with independent channels, so a slow consumer cannot
+// block any other.
 //
-// Backpressure: per-subscriber channels are large but bounded. When a
-// subscriber falls behind, publishes drop the event and log a warning -
-// status dots may briefly lag but the next published status will resync,
-// and dropped log lines are remembered in the runner's in-memory Buffer
-// (so a manual refresh recovers them). The alternative - blocking the
-// supervisor on a stalled consumer - is unacceptable for a lifecycle
-// bus that has to keep the system responsive.
+// Per-subscriber channels are large but bounded. When a subscriber falls
+// behind, publishes drop the event rather than block the supervisor: the next
+// status resyncs the dots, and dropped log lines stay in the runner's in-memory
+// Buffer so a manual refresh recovers them.
 type Hub struct {
 	mu      sync.RWMutex
 	subs    map[*subscriber]struct{}
@@ -27,7 +28,7 @@ type Hub struct {
 	bufLog  int
 }
 
-// Subscription is one consumer's view of the bus. Status / Logs are closed
+// Subscription is one consumer's view of the bus. Status and Logs are closed
 // when the supervisor stops or the subscription is canceled, so a typical
 // consumer is two goroutines each ranging over one channel.
 type Subscription struct {
@@ -88,8 +89,8 @@ func (h *Hub) Subscribe() (Subscription, func()) {
 	return Subscription{Status: sub.status, Logs: sub.logs}, cancel
 }
 
-// PublishStatus delivers a status event to every active subscriber. Drops
-// on a full per-subscriber buffer with a warning.
+// PublishStatus delivers a status event to every active subscriber, dropping
+// with a warning on a full per-subscriber buffer.
 func (h *Hub) PublishStatus(ev protocol.StatusEvent) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -105,9 +106,8 @@ func (h *Hub) PublishStatus(ev protocol.StatusEvent) {
 	}
 }
 
-// PublishLog delivers a log line to every active subscriber. Drops on a
-// full per-subscriber buffer (no warning - log bursts are common and a
-// per-line warning would itself flood).
+// PublishLog delivers a log line to every active subscriber, dropping silently
+// on a full per-subscriber buffer (a per-line warning would itself flood).
 func (h *Hub) PublishLog(ln protocol.LogLine) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()

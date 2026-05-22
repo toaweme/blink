@@ -10,21 +10,17 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
-// portEnvFiles are the dotenv-style files SniffPorts reads, in order. They are
-// the highest-signal, lowest-false-positive place a dev server's port is
-// written down; scanning source would guess wrong far too often.
+// portEnvFiles are the dotenv-style files SniffPorts reads, in order.
 var portEnvFiles = []string{".env", ".env.local", ".env.development", ".env.dev", ".env.example"}
 
 // SniffPorts makes a best-effort guess at the TCP port(s) a service listens on
 // by reading dotenv files in its own directory (root+svc.Dir). It looks for
-// PORT-ish keys (PORT, HTTP_PORT, ...) and ADDR-ish keys whose value carries a
-// ":port". Returns the unique ports found in first-seen order, or nil.
+// PORT-ish keys and ADDR-ish keys whose value carries a ":port", returning the
+// unique ports in first-seen order, or nil.
 //
-// It reads only the service's own directory - never the project root and never
-// source code. A shared monorepo root .env lists ports for many services and
-// can't be attributed to any one of them, so pulling from it would tag every
-// service with the same bogus list (and blink would then kill all of them on
-// start). The caller (scanServices) further skips dirs shared by >1 service.
+// It reads only the service's own directory, never the project root or source
+// code: a shared monorepo root .env cannot be attributed to any one service, so
+// pulling from it would tag every service with the same bogus list.
 func SniffPorts(root string, svc config.Service) []config.Port {
 	dir := filepath.Join(root, svc.Dir)
 	seen := make(map[int]bool)
@@ -42,10 +38,9 @@ func SniffPorts(root string, svc config.Service) []config.Port {
 }
 
 // EnvKeyForPort reports the env var in the service's own .env files whose value
-// is the given port, if any. It powers `blink init`'s runtime probe: once a
-// service is observed binding a port, blink prefers writing the env-var name over the
-// bare number so the config tracks the .env instead of hardcoding it. The first
-// matching key (in portEnvFiles, then file order) wins.
+// is the given port, if any. `blink init` prefers writing the env-var name over
+// the bare number so the config tracks the .env. The first matching key (in
+// portEnvFiles, then file order) wins.
 func EnvKeyForPort(root string, svc config.Service, port int) (string, bool) {
 	dir := filepath.Join(root, svc.Dir)
 	for _, name := range portEnvFiles {
@@ -58,9 +53,7 @@ func EnvKeyForPort(root string, svc config.Service, port int) (string, bool) {
 	return "", false
 }
 
-// envPort pairs the env var name with the port parsed from its value, so the
-// caller can both list ports (SniffPorts) and map a port back to its key
-// (EnvKeyForPort).
+// envPort pairs an env var name with the port parsed from its value.
 type envPort struct {
 	key  string
 	port int
@@ -113,8 +106,8 @@ func portKey(key string) bool {
 }
 
 // portFromValue pulls a port out of a value that is either a bare number
-// ("8080") or an address with a trailing ":port" (":8080", "0.0.0.0:8080",
-// "http://localhost:8080"). Returns false when no plausible port is present.
+// ("8080") or an address with a trailing ":port" ("0.0.0.0:8080"). Returns
+// false when no plausible port is present.
 func portFromValue(val string) (int, bool) {
 	if val == "" {
 		return 0, false

@@ -7,9 +7,9 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
-// pythonDetector recognises a Python project and emits a shell-runtime service
-// pointed at the most likely entrypoint: Django's manage.py runserver, an
-// app.py / main.py module, else a bare interpreter the user refines.
+// pythonDetector recognizes a Python project and emits a shell-runtime service
+// pointed at the most likely entrypoint: manage.py runserver, an app.py /
+// main.py module, else a bare `python -m <module>` the user refines.
 type pythonDetector struct{}
 
 var _ Detector = pythonDetector{}

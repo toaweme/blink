@@ -1,8 +1,10 @@
+// Package format serializes a blink Config to disk in JSON, YAML, or TOML.
 package format
 
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,14 +15,19 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
+// Format is the on-disk serialization format for a Config.
 type Format string
 
 const (
+	// FormatJSON serializes a Config as JSON.
 	FormatJSON Format = "json"
+	// FormatYAML serializes a Config as YAML.
 	FormatYAML Format = "yaml"
+	// FormatTOML serializes a Config as TOML.
 	FormatTOML Format = "toml"
 )
 
+// Writer writes a Config to its target file in a chosen Format.
 type Writer interface {
 	Write(config config.Config, format Format) error
 }
@@ -29,12 +36,15 @@ type writer struct {
 	file string
 }
 
+var _ Writer = (*writer)(nil)
+
+// NewWriter returns a Writer that writes configs to file.
 func NewWriter(file string) Writer {
 	return &writer{file: file}
 }
 
-func (w *writer) Write(config config.Config, format Format) error {
-	err := write(w.file, config, format)
+func (w *writer) Write(cfg config.Config, format Format) error {
+	err := write(w.file, cfg, format)
 	if err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
@@ -46,7 +56,6 @@ func write(file string, cfg config.Config, format Format) error {
 	var data []byte
 	var err error
 
-	// create dirs if they don't exist
 	if err = os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
 		return fmt.Errorf("failed to create directories in: %s: %w", file, err)
 	}
@@ -55,7 +64,6 @@ func write(file string, cfg config.Config, format Format) error {
 	case FormatJSON:
 		data, err = json.MarshalIndent(cfg, "", "  ")
 	case FormatYAML:
-		// Step 1: Marshal the struct into YAML bytes.
 		yamlBytes, err := yaml.Marshal(cfg)
 		if err != nil {
 			return fmt.Errorf("marshaling config to YAML: %w", err)
@@ -79,15 +87,15 @@ func write(file string, cfg config.Config, format Format) error {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 
-	if err = os.WriteFile(file, data, 0o644); err != nil {
+	if err = os.WriteFile(file, data, 0o600); err != nil {
 		return fmt.Errorf("writing to file: %w", err)
 	}
 
 	return nil
 }
 
-// ReformatKeyValuesAsInlineArray accepts a YAML byte slice and a key name (e.g., "extensions").
-// It searches the entire YAML structure for the key and formats its values as inline arrays.
+// reformatKeyValuesAsInlineArray formats every occurrence of key's sequence
+// value as an inline (flow-style) array.
 func reformatKeyValuesAsInlineArray(yamlBytes []byte, key string) ([]byte, error) {
 	var root yaml.Node
 	err := yaml.Unmarshal(yamlBytes, &root)
@@ -95,16 +103,13 @@ func reformatKeyValuesAsInlineArray(yamlBytes []byte, key string) ([]byte, error
 		return nil, err
 	}
 
-	// Ensure there's content to work with
 	if len(root.Content) == 0 {
-		return nil, fmt.Errorf("empty YAML content")
+		return nil, errors.New("empty YAML content")
 	}
-	node := root.Content[0] // The root node
+	node := root.Content[0]
 
-	// Modify all sequence nodes with the specified key to have FlowStyle
 	setSequenceToFlowStyle(node, key)
 
-	// Marshal the modified YAML back to bytes
 	out, err := yaml.Marshal(&root)
 	if err != nil {
 		return nil, err
@@ -112,35 +117,28 @@ func reformatKeyValuesAsInlineArray(yamlBytes []byte, key string) ([]byte, error
 	return out, nil
 }
 
-// setSequenceToFlowStyle recursively traverses the YAML node tree to find all occurrences of the target key.
-// Once found, it sets the sequence node's style to FlowStyle to make it an inline array.
+// setSequenceToFlowStyle recursively sets every sequence node reached under key
+// to FlowStyle, making it an inline array.
 func setSequenceToFlowStyle(node *yaml.Node, key string) {
 	switch node.Kind {
 	case yaml.MappingNode:
-		// Iterate over key-value pairs in the mapping node
 		for i := 0; i < len(node.Content); i += 2 {
 			keyNode := node.Content[i]
 			valueNode := node.Content[i+1]
 
-			// Check if the current key matches the target key
 			if keyNode.Value == key {
-				// If the value is a sequence node, set its style to FlowStyle
 				if valueNode.Kind == yaml.SequenceNode {
 					valueNode.Style = yaml.FlowStyle
 				}
 			}
 
-			// Recurse into the value node
 			setSequenceToFlowStyle(valueNode, key)
 		}
 	case yaml.SequenceNode:
-		// Recurse into each element of the sequence
 		for _, n := range node.Content {
 			setSequenceToFlowStyle(n, key)
 		}
 	default:
-		// DocumentNode, AliasNode, ScalarNode - recurse into their
-		// content if any.
 		for _, n := range node.Content {
 			setSequenceToFlowStyle(n, key)
 		}

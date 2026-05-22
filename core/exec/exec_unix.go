@@ -14,11 +14,11 @@ import (
 )
 
 // kill signals the process group, then waits for Run()'s goroutine to finish
-// reaping. Returns once r.done is closed (process fully torn down) - callers
-// can safely rebind ports the moment kill returns.
+// reaping. Returns once r.done is closed (process fully torn down) so callers
+// can rebind ports immediately.
 //
-// We do NOT call cmd.Process.Wait() here: cmd.Wait() is already running in
-// Run()'s goroutine and reaping the child. A second Wait would race it.
+// It does not call cmd.Process.Wait(): cmd.Wait() is already reaping the child
+// in Run()'s goroutine, and a second Wait would race it.
 func (r *Runner) kill(cmd *exec.Cmd, interrupt bool, graceTimeout time.Duration) (pid int, err error) {
 	pid = cmd.Process.Pid
 
@@ -48,18 +48,19 @@ func (r *Runner) kill(cmd *exec.Cmd, interrupt bool, graceTimeout time.Duration)
 
 func (r *Runner) start(cfg Config) (*exec.Cmd, io.ReadCloser, error) {
 	log.Info("executing", "service", cfg.Name, "command", cfg.Command, "dir", cfg.Dir)
+	//nolint:gosec // cfg.Command is the user's own service command from blink.yaml
 	c := exec.Command("/bin/sh", "-c", cfg.Command)
 	c.Dir = cfg.Dir
 	c.Env = os.Environ()
 	c.Env = append(c.Env, cfg.Environment()...)
-	// because using pty cannot have same pgid
+	// own process group so kill can signal the whole tree.
 	c.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
 	}
 
-	// merge stdout and stderr into a single pipe so we read them in the exact
-	// order the child wrote them. with separate pipes a panic on stderr gets
-	// shredded line-by-line between stdout slog traces and becomes unreadable.
+	// merge stdout and stderr into one pipe so lines stay in the order the child
+	// wrote them. With separate pipes a stderr panic gets interleaved with
+	// stdout traces and becomes unreadable.
 	pr, pw, err := os.Pipe()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create output pipe: %w", err)
@@ -67,8 +68,8 @@ func (r *Runner) start(cfg Config) (*exec.Cmd, io.ReadCloser, error) {
 	c.Stdout = pw
 	c.Stderr = pw
 
-	// optional stdin pipe - only when Config.Stdin is set, so services not
-	// using the control socket keep their inherited-stdin behavior.
+	// optional stdin pipe, only when Config.Stdin is set, so services not using
+	// the control socket keep inherited-stdin behavior.
 	var stdinR *os.File
 	if cfg.Stdin {
 		var stdinW *os.File

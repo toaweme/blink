@@ -1,7 +1,6 @@
 // Command blink is a local dev supervisor: it boots every service in
-// blink.yaml, keeps them alive, and restarts them (and their declared
-// dependents) on file changes, with a bubbletea TUI. It runs fully
-// offline - no session sharing, no control socket, no remote access.
+// blink.yaml, keeps them alive, and restarts them and their dependents
+// on file changes, with a bubbletea TUI. It runs fully offline.
 package main
 
 import (
@@ -21,13 +20,8 @@ import (
 	"github.com/toaweme/blink/core/addon"
 )
 
-// version, commit, and date are injected at build time by goreleaser via
-// -ldflags -X main.<name>=...
-var (
-	version = "dev"
-	commit  = "none"
-	date    = "unknown"
-)
+// version is injected at build time via -ldflags -X main.version.
+var version = "dev"
 
 func main() {
 	if err := run(); err != nil {

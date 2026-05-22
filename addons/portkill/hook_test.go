@@ -1,7 +1,6 @@
 package portkill
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -22,22 +21,20 @@ func TestHookPhases(t *testing.T) {
 }
 
 func TestHookRunNoopWhenPortsEmpty(t *testing.T) {
-	// no ports declared: must not invoke any killing logic; just returns nil.
-	err := Hook{}.Run(context.Background(), addon.PhaseBeforeStart, config.Config{ForceShutdown: boolPtr(true)}, config.Service{Name: "svc"})
+	// no ports declared: must not invoke kill logic, returns nil.
+	err := Hook{}.Run(t.Context(), addon.PhaseBeforeStart, config.Config{ForceShutdown: boolPtr(true)}, config.Service{Name: "svc"})
 	require.NoError(t, err)
 }
 
 func TestHookRunNoopWhenForceShutdownDisabled(t *testing.T) {
-	// per-service false wins over project-wide true; with Ports set, we still
-	// must not invoke Kill because the effective ForceShutdown is false. Since
-	// Run short-circuits before calling Kill, no error is returned.
+	// per-service false wins over project-wide true: even with Ports set, the effective ForceShutdown is false, so Run short-circuits before Kill and returns nil.
 	cfg := config.Config{ForceShutdown: boolPtr(true)}
 	svc := config.Service{Name: "svc", Ports: []config.Port{config.LiteralPort(12345)}, ForceShutdown: boolPtr(false)}
 
-	// sanity-check the resolution itself
+	// verify the resolution itself
 	assert.False(t, forceShutdownEnabled(cfg, svc))
 
-	err := Hook{}.Run(context.Background(), addon.PhaseBeforeStart, cfg, svc)
+	err := Hook{}.Run(t.Context(), addon.PhaseBeforeStart, cfg, svc)
 	require.NoError(t, err)
 }
 

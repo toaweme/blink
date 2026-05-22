@@ -10,10 +10,9 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
-// dockerDetector recognises a compose file and emits a single docker-runtime
-// service whose DockerConfig.Services lists every compose service, so the
-// wizard can checkbox the subset to run. No file-watch is configured: the
-// docker runtime manages its containers end to end.
+// dockerDetector recognizes a compose file and emits a single docker-runtime
+// service whose DockerConfig.Services lists every compose service. No file-watch
+// is configured: the docker runtime manages its containers end to end.
 type dockerDetector struct{}
 
 var _ Detector = dockerDetector{}
@@ -40,8 +39,7 @@ func (dockerDetector) Detect(dir string) ([]Detected, error) {
 		return nil, err
 	}
 
-	// only record File when it differs from the runtime default, so a stock
-	// docker-compose.yml stays implicit rather than echoing the default back.
+	// record File only when it differs from the runtime default.
 	dockerCfg := &config.DockerConfig{Services: services}
 	if file != config.DefaultComposeFile {
 		dockerCfg.File = file
@@ -65,8 +63,7 @@ func (dockerDetector) Detect(dir string) ([]Detected, error) {
 
 // ComposeServices returns the names of every service declared in the compose
 // file a docker service points at (root + svc.Dir + the configured file,
-// defaulting the filename). Callers use it to tell whether a service's recorded
-// subset covers the whole stack.
+// defaulting the filename).
 func ComposeServices(root string, svc config.Service) ([]string, error) {
 	file := config.DefaultComposeFile
 	if svc.Docker != nil && svc.Docker.File != "" {

@@ -11,13 +11,13 @@ import (
 	"strings"
 )
 
-// listenPorts shells out to lsof, which ships in the macOS base system, to list
-// the LISTEN sockets owned by process group pgid. macOS has no /proc and the
-// libproc syscall path needs cgo, so lsof is the maintainable choice. -a ANDs
-// the selectors: "-g pgid" (this process group), "-iTCP -sTCP:LISTEN"
-// (listening TCP only). -n/-P keep hosts and ports numeric; -Fn switches lsof to
-// machine-readable output, one field per line with the name field prefixed "n".
+// listenPorts shells out to lsof (macOS base system) for the LISTEN sockets
+// owned by process group pgid; macOS has no /proc and the libproc path needs
+// cgo. -a ANDs the selectors "-g pgid" and "-iTCP -sTCP:LISTEN"; -nP keep hosts
+// and ports numeric; -Fn emits machine-readable output with name lines prefixed
+// "n".
 func listenPorts(pgid int) ([]int, error) {
+	//nolint:gosec // fixed lsof invocation; the only variable arg is pgid, an int formatted via strconv.
 	out, err := exec.Command("lsof", "-nP", "-a", "-g", strconv.Itoa(pgid), "-iTCP", "-sTCP:LISTEN", "-Fn").Output()
 	if err != nil {
 		// lsof exits 1 when nothing matches; that's an empty set, not a failure.

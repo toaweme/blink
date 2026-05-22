@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,16 +13,15 @@ import (
 	"github.com/toaweme/blink/core/supervisor"
 )
 
-// probeTimeout is the overall backstop: how long to wait for a service to build
-// and reach running before giving up. Generous because go/air services compile
-// first. Most probes finish far sooner - see probeRunGrace.
+// probeTimeout is the overall backstop for a service to build and reach running
+// before giving up. Generous because go/air services compile first; most probes
+// finish far sooner (see probeRunGrace).
 const probeTimeout = 30 * time.Second
 
 // probeRunGrace is how long to keep watching for a port once the service is
-// actually running. A server binds within a moment of starting, so a service
-// that's been running this long without a listener almost certainly doesn't
-// listen - we stop waiting instead of burning the full probeTimeout. This is
-// what keeps probing snappy for workers and other non-listening services.
+// running. A server binds within a moment of starting, so a service running this
+// long without a listener almost certainly doesn't listen; stopping early keeps
+// probing snappy for workers and other non-listening services.
 const probeRunGrace = 3 * time.Second
 
 // probeSettle is the extra wait after the first port appears, so a service that
@@ -33,24 +33,24 @@ const probePoll = 150 * time.Millisecond
 
 // runtimeProbe spins a single service up via a throwaway supervisor and returns
 // the TCP ports it bound, read from the listening sockets owned by the service's
-// own process group. It's the reliable counterpart to detect.SniffPorts: where
-// SniffPorts guesses from .env, this observes what the process actually listened
-// on, for any runtime or project layout. Per-group attribution means several
-// services can be probed concurrently without stealing each other's ports.
+// process group. Unlike detect.SniffPorts (which guesses from .env), this
+// observes what the process actually listened on, for any runtime or layout.
+// Per-group attribution lets several services be probed concurrently without
+// stealing each other's ports.
 //
-// Discovered ports are mapped back to an env-var name when the service's .env
-// already names that port, so init can write the reference instead of
-// hardcoding the number. The service is always stopped before returning, even
-// on error. Docker is rejected up front: bringing a compose stack up just to
-// read ports is too heavy, and compose already declares its ports.
+// A discovered port is mapped back to its env-var name when the service's .env
+// already names it, so init can write the reference instead of the literal. The
+// service is always stopped before returning, even on error. Docker is rejected
+// up front: bringing a compose stack up to read ports is too heavy, and compose
+// already declares its ports.
 func runtimeProbe(ctx context.Context, reg *addon.Registry, root string, svc config.Service) ([]config.Port, error) {
 	if svc.Runtime == "docker" {
-		return nil, fmt.Errorf("port probing is not supported for docker services: ports come from the compose file")
+		return nil, errors.New("port probing is not supported for docker services: ports come from the compose file")
 	}
 
 	// probe a lone copy: drop file-watch and cross-service reload deps so the
-	// single-service supervisor doesn't reject a dep on a sibling that isn't
-	// present, and so no watcher spins up for a process we kill in seconds.
+	// single-service supervisor doesn't reject a dep on an absent sibling, and so
+	// no watcher spins up for a process killed in seconds.
 	probed := svc
 	probed.Reload = config.Reload{}
 	cfg := config.Config{DirRoot: root, Services: []config.Service{probed}}
@@ -64,7 +64,9 @@ func runtimeProbe(ctx context.Context, reg *addon.Registry, root string, svc con
 		return nil, fmt.Errorf("failed to start service %q for probing: %w", svc.Name, err)
 	}
 	defer func() {
-		stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// keep ctx's values but drop its cancellation: the service must still be
+		// stopped even when the parent ctx was already canceled (e.g. init returning).
+		stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
 		_ = sup.Stop(stopCtx)
 	}()
@@ -77,12 +79,11 @@ func runtimeProbe(ctx context.Context, reg *addon.Registry, root string, svc con
 }
 
 // waitForGroupPorts polls the service's process group until it owns a listening
-// port, or it's clear none is coming. blink starts each service in its own
-// process group, so the runner's pid is the group id. It returns early when:
+// port, or it's clear none is coming. Each service runs in its own process
+// group, so the runner's pid is the group id. It returns early when:
 //   - a port appears (after a brief probeSettle to catch sibling ports);
 //   - the service crashed, exited, or was stopped (no listener to find);
-//   - the service has been running for probeRunGrace without binding a port
-//     (it isn't a listening service - e.g. a worker).
+//   - the service has run for probeRunGrace without binding a port (not a listening service, e.g. a worker).
 //
 // probeTimeout is only the overall backstop for a service stuck building.
 func waitForGroupPorts(ctx context.Context, sup *supervisor.Supervisor, name string) ([]int, error) {
@@ -123,6 +124,9 @@ func waitForGroupPorts(ctx context.Context, sup *supervisor.Supervisor, name str
 				if time.Since(runningSince) > probeRunGrace {
 					return nil, nil // running a while, bound nothing
 				}
+			default:
+				// pending / building / restarting: keep polling until running,
+				// terminal, or the overall deadline below.
 			}
 			if time.Now().After(deadline) {
 				return nil, nil

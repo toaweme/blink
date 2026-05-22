@@ -12,7 +12,7 @@ func Test_Port_YAMLRoundTrip(t *testing.T) {
 		name string
 		in   string
 		want Port
-		out  string // re-marshalled form
+		out  string // re-marshaled form
 	}{
 		{name: "literal int", in: "8080", want: LiteralPort(8080), out: "8080\n"},
 		{name: "bare env name", in: "SERVER_HTTP_PORT", want: EnvPort("SERVER_HTTP_PORT"), out: "SERVER_HTTP_PORT\n"},

@@ -74,7 +74,7 @@ func Test_Registry_DispatchHooks_OnlyDeclaredPhases(t *testing.T) {
 	r.AddHook(b)
 	r.AddHook(c)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	r.DispatchHooks(ctx, PhaseBeforeStart, config.Config{}, config.Service{}, nil)
 
 	assert.Equal(t, []Phase{PhaseBeforeStart}, a.calls)
@@ -96,7 +96,7 @@ func Test_Registry_DispatchHooks_NilErrFn(t *testing.T) {
 	})
 	// passing nil errFn must not panic even when a hook returns an error.
 	assert.NotPanics(t, func() {
-		r.DispatchHooks(context.Background(), PhaseBeforeStart, config.Config{}, config.Service{}, nil)
+		r.DispatchHooks(t.Context(), PhaseBeforeStart, config.Config{}, config.Service{}, nil)
 	})
 }
 
@@ -104,7 +104,7 @@ func Test_Registry_DispatchHooks_NilRegistryNoOp(t *testing.T) {
 	var r *Registry
 	called := false
 	assert.NotPanics(t, func() {
-		r.DispatchHooks(context.Background(), PhaseBeforeStart, config.Config{}, config.Service{}, func(hook string, err error) {
+		r.DispatchHooks(t.Context(), PhaseBeforeStart, config.Config{}, config.Service{}, func(hook string, err error) {
 			called = true
 		})
 	})
@@ -125,7 +125,7 @@ func Test_Registry_DispatchHooks_ReportsErrors(t *testing.T) {
 		err  error
 	}
 	var got []record
-	r.DispatchHooks(context.Background(), PhaseBeforeStart, config.Config{}, config.Service{}, func(hook string, err error) {
+	r.DispatchHooks(t.Context(), PhaseBeforeStart, config.Config{}, config.Service{}, func(hook string, err error) {
 		got = append(got, record{name: hook, err: err})
 	})
 

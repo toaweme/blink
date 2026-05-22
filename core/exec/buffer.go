@@ -1,3 +1,6 @@
+// Package exec runs and supervises a single child process: it captures the
+// process output into a Buffer and exposes lifecycle controls (start, stop,
+// signal, stdin).
 package exec
 
 import (
@@ -5,11 +8,13 @@ import (
 	"sync"
 )
 
+// Buffer is a concurrency-safe, append-only store of output lines that lets
+// subscribers block until new lines arrive.
 type Buffer struct {
 	mu    sync.RWMutex
 	lines []string
 
-	// cond is used to broadcast that a new line was appended
+	// cond broadcasts that a new line was appended.
 	cond *sync.Cond
 }
 
@@ -18,7 +23,7 @@ func NewBuffer() *Buffer {
 	lb := &Buffer{
 		lines: make([]string, 0),
 	}
-	// cond requires a Lock; we can reuse lb.mu for that
+	// cond requires a Locker; reuse lb.mu.
 	lb.cond = sync.NewCond(&lb.mu)
 	return lb
 }
@@ -29,7 +34,7 @@ func (b *Buffer) Append(line string) {
 	defer b.mu.Unlock()
 	b.lines = append(b.lines, line)
 
-	// Broadcast to all goroutines that might be waiting in TailStream
+	// wake any TailStream waiters.
 	b.cond.Broadcast()
 }
 
@@ -85,19 +90,14 @@ func (b *Buffer) Range(start, end int) []string {
 	return out
 }
 
-// TailStream returns a channel that streams lines as they arrive,
-// starting from line index `fromLine`. It blocks until new lines come in.
-//
-// You can cancel the streaming by canceling the provided context.
-//
-// Example usage:
+// TailStream returns a channel that streams lines as they arrive, starting from
+// line index fromLine. Cancel ctx to stop streaming.
 //
 //	ctx, cancel := context.WithCancel(context.Background())
 //	ch := logBuffer.TailStream(ctx, 0)
 //	for line := range ch {
 //	    fmt.Println("New line:", line)
 //	}
-//	// call cancel() or break when you want to stop
 func (b *Buffer) TailStream(ctx context.Context, fromLine int) <-chan string {
 	outChan := make(chan string)
 
@@ -109,31 +109,27 @@ func (b *Buffer) TailStream(ctx context.Context, fromLine int) <-chan string {
 
 		idx := fromLine
 		for {
-			// Emit any lines that have arrived since idx
+			// emit any lines that have arrived since idx.
 			for idx < len(b.lines) {
 				line := b.lines[idx]
 				idx++
-				// We must release the lock before sending to avoid blocking everything
+				// release the lock before sending so a slow consumer can't stall writers.
 				b.mu.Unlock()
 
 				select {
 				case outChan <- line:
-					// Sent OK
 				case <-ctx.Done():
 					return
 				}
 
-				// Reacquire the lock to check lines again
 				b.mu.Lock()
 			}
 
-			// If we reach here, we have no new lines to stream right now.
-			// Wait for either new lines to arrive or context to be canceled.
+			// no new lines; wait for an Append broadcast or ctx cancellation.
 			select {
 			case <-ctx.Done():
 				return
 			default:
-				// Wait until we get a cond.Broadcast() in Append
 				b.cond.Wait()
 			}
 		}
