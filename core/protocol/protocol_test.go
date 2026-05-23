@@ -11,7 +11,7 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
-func TestEncodeDecodeStatusRoundTrip(t *testing.T) {
+func Test_EncodeDecode_StatusRoundTrip(t *testing.T) {
 	in := StatusEvent{
 		Service: "api",
 		Child:   "db",
@@ -29,7 +29,7 @@ func TestEncodeDecodeStatusRoundTrip(t *testing.T) {
 	assert.Equal(t, in, out)
 }
 
-func TestEncodeDecodeLogRoundTrip(t *testing.T) {
+func Test_EncodeDecode_LogRoundTrip(t *testing.T) {
 	in := LogLine{
 		Service: "api",
 		Child:   "",
@@ -45,7 +45,7 @@ func TestEncodeDecodeLogRoundTrip(t *testing.T) {
 	assert.Equal(t, in, out)
 }
 
-func TestEncodeDecodeConfigRoundTrip(t *testing.T) {
+func Test_EncodeDecode_ConfigRoundTrip(t *testing.T) {
 	in := ConfigSnapshot{
 		Config: config.Config{
 			UI:      "plain",
@@ -67,7 +67,7 @@ func TestEncodeDecodeConfigRoundTrip(t *testing.T) {
 	assert.Equal(t, "api", out.Config.Services[0].Name)
 }
 
-func TestDecodeRejectsWrongKind(t *testing.T) {
+func Test_Decode_RejectsWrongKind(t *testing.T) {
 	// build a log envelope and try to decode it as status/config.
 	logEnv, err := Encode(KindLog, LogLine{Service: "x", Line: "y"})
 	require.NoError(t, err)
@@ -87,7 +87,7 @@ func TestDecodeRejectsWrongKind(t *testing.T) {
 	assert.Contains(t, err.Error(), "expected log envelope")
 }
 
-func TestEncodePreservesPayloadBytes(t *testing.T) {
+func Test_Encode_PreservesPayloadBytes(t *testing.T) {
 	in := StatusEvent{Service: "api", Status: "running", At: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)}
 	env, err := Encode(KindStatus, in)
 	require.NoError(t, err)
@@ -98,7 +98,7 @@ func TestEncodePreservesPayloadBytes(t *testing.T) {
 	assert.JSONEq(t, string(want), string(env.Payload))
 }
 
-func TestPayloadJSONSerialization(t *testing.T) {
+func Test_Payload_JSONSerialization(t *testing.T) {
 	ts := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	tests := []struct {
 		name    string

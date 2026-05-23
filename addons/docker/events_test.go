@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseComposePsArray(t *testing.T) {
+func Test_ParseComposePs_Array(t *testing.T) {
 	data := []byte(`[
   {"Name":"awee-db-1","Service":"db","State":"running","Health":"healthy"},
   {"Name":"awee-redis-1","Service":"redis","State":"running","Health":""}
@@ -19,7 +19,7 @@ func TestParseComposePsArray(t *testing.T) {
 	assert.Equal(t, "running", rows[0].State)
 }
 
-func TestParseComposePsNDJSON(t *testing.T) {
+func Test_ParseComposePs_NDJSON(t *testing.T) {
 	data := []byte(`{"Name":"awee-db-1","Service":"db","State":"running","Health":"healthy"}
 {"Name":"awee-redis-1","Service":"redis","State":"exited","Health":""}
 `)
@@ -30,7 +30,7 @@ func TestParseComposePsNDJSON(t *testing.T) {
 	assert.Equal(t, "exited", rows[1].State)
 }
 
-func TestMapEventAction(t *testing.T) {
+func Test_MapEventAction(t *testing.T) {
 	cases := map[string]string{
 		"start":                    "running",
 		"die":                      "exited",
@@ -48,7 +48,7 @@ func TestMapEventAction(t *testing.T) {
 	}
 }
 
-func TestNormaliseState(t *testing.T) {
+func Test_NormaliseState(t *testing.T) {
 	assert.Equal(t, "running", normaliseState("running", "healthy"))
 	assert.Equal(t, "crashed", normaliseState("running", "unhealthy"))
 	assert.Equal(t, "exited", normaliseState("exited", ""))

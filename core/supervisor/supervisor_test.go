@@ -18,7 +18,7 @@ func (stubRuntime) Prepare(_ config.Config, _ config.Service) (addon.Plan, error
 	return addon.Plan{}, nil
 }
 
-func TestTopoSort(t *testing.T) {
+func Test_TopoSort(t *testing.T) {
 	tests := []struct {
 		name     string
 		services []config.Service
@@ -74,7 +74,7 @@ func TestTopoSort(t *testing.T) {
 	}
 }
 
-func TestNewBuildsDependentsMap(t *testing.T) {
+func Test_New_BuildsDependentsMap(t *testing.T) {
 	cfg := config.Config{Services: []config.Service{
 		{Name: "a"},
 		{Name: "b", Reload: config.Reload{ReloadOnService: []string{"a"}}},

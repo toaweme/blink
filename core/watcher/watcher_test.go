@@ -12,7 +12,7 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
-func TestExtSetNormalisesLeadingDotAndCase(t *testing.T) {
+func Test_ExtSet_NormalisesLeadingDotAndCase(t *testing.T) {
 	set := extSet([]string{".Go", "yaml", ".JSON"})
 	_, ok := set["go"]
 	assert.True(t, ok)
@@ -23,12 +23,12 @@ func TestExtSetNormalisesLeadingDotAndCase(t *testing.T) {
 	assert.Len(t, set, 3)
 }
 
-func TestExtSetEmpty(t *testing.T) {
+func Test_ExtSet_Empty(t *testing.T) {
 	assert.Nil(t, extSet(nil))
 	assert.Nil(t, extSet([]string{}))
 }
 
-func TestAnyMatch(t *testing.T) {
+func Test_AnyMatch(t *testing.T) {
 	g1, err := compileGlob("**/*.go")
 	require.NoError(t, err)
 	g2, err := compileGlob("vendor/**")
@@ -46,7 +46,7 @@ func anyMatchHelper(a, b interface{ Match(string) bool }, path string) bool {
 	return a.Match(path) || b.Match(path)
 }
 
-func TestDedupe(t *testing.T) {
+func Test_Dedupe(t *testing.T) {
 	got := dedupe([]string{"a", "b", "a", "c", "b"})
 	assert.ElementsMatch(t, []string{"a", "b", "c"}, got)
 

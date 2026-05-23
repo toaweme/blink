@@ -19,11 +19,11 @@ import (
 
 // InitConfig holds the flags the init command accepts.
 type InitConfig struct {
-	Path  string `arg:"path"  short:"p" env:"BLINK_INIT_PATH"  default:"blink.yaml" help:"Output path."`
+	Path  string `arg:"path"  short:"p" env:"BLINK_INIT_PATH"  default:"blink.yml" help:"Output path."`
 	Force bool   `arg:"force" short:"f" env:"BLINK_INIT_FORCE"                     help:"Overwrite an existing file."`
 }
 
-// InitCommand scans the project and interactively creates a new blink.yaml.
+// InitCommand scans the project and interactively creates a new blink.yml.
 type InitCommand struct {
 	cli.BaseCommand[InitConfig]
 	reg *addon.Registry
@@ -38,7 +38,7 @@ func NewInitCommand(reg *addon.Registry) *InitCommand {
 }
 
 // Run scans the project, runs the interactive picker, and writes the selected
-// services to a new blink.yaml.
+// services to a new blink.yml.
 func (c *InitCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
 	target := c.Inputs.Path
 	if !filepath.IsAbs(target) {
@@ -219,5 +219,5 @@ func (c *InitCommand) Validate(_ map[string]any) error { return nil }
 
 // Help returns the one-line description shown in the command list.
 func (c *InitCommand) Help() string {
-	return "Scan the project and interactively create a blink.yaml in the current directory."
+	return "Scan the project and interactively create a blink.yml in the current directory."
 }

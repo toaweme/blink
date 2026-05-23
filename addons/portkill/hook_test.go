@@ -12,21 +12,21 @@ import (
 
 func boolPtr(b bool) *bool { return &b }
 
-func TestHookName(t *testing.T) {
+func Test_Hook_Name(t *testing.T) {
 	assert.Equal(t, "portkill", Hook{}.Name())
 }
 
-func TestHookPhases(t *testing.T) {
+func Test_Hook_Phases(t *testing.T) {
 	assert.Equal(t, []addon.Phase{addon.PhaseBeforeStart}, Hook{}.Phases())
 }
 
-func TestHookRunNoopWhenPortsEmpty(t *testing.T) {
+func Test_Hook_RunNoopWhenPortsEmpty(t *testing.T) {
 	// no ports declared: must not invoke kill logic, returns nil.
 	err := Hook{}.Run(t.Context(), addon.PhaseBeforeStart, config.Config{ForceShutdown: boolPtr(true)}, config.Service{Name: "svc"})
 	require.NoError(t, err)
 }
 
-func TestHookRunNoopWhenForceShutdownDisabled(t *testing.T) {
+func Test_Hook_RunNoopWhenForceShutdownDisabled(t *testing.T) {
 	// per-service false wins over project-wide true: even with Ports set, the effective ForceShutdown is false, so Run short-circuits before Kill and returns nil.
 	cfg := config.Config{ForceShutdown: boolPtr(true)}
 	svc := config.Service{Name: "svc", Ports: []config.Port{config.LiteralPort(12345)}, ForceShutdown: boolPtr(false)}
@@ -38,7 +38,7 @@ func TestHookRunNoopWhenForceShutdownDisabled(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestForceShutdownEnabled(t *testing.T) {
+func Test_ForceShutdownEnabled(t *testing.T) {
 	tests := []struct {
 		name string
 		cfg  *bool

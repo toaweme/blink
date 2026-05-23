@@ -11,7 +11,7 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
-func TestWriterFormats(t *testing.T) {
+func Test_Writer_Formats(t *testing.T) {
 	cfg := config.Config{
 		Services: []config.Service{
 			{Name: "api", Runtime: "go", Ports: []config.Port{config.LiteralPort(8080)}},

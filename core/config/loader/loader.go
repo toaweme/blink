@@ -15,7 +15,9 @@ import (
 )
 
 // configNames are searched in order when discovering a config from cwd upwards.
-var configNames = []string{".blink.yml", "blink.yml", ".blink.yaml", "blink.yaml"}
+// blink.yml is canonical (what `blink init` writes); the rest are accepted
+// fallbacks: visible before hidden, .yml before .yaml.
+var configNames = []string{"blink.yml", "blink.yaml", ".blink.yml", ".blink.yaml"}
 
 // Load returns the parsed config and the absolute path it was read from.
 //

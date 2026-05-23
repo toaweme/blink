@@ -11,7 +11,7 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
-func TestValidate(t *testing.T) {
+func Test_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
 		cfg     config.Config
@@ -65,7 +65,7 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-func TestDiscoverFindsConfigInDir(t *testing.T) {
+func Test_Discover_FindsConfigInDir(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "blink.yaml"), []byte("services:\n  - name: x\n"), 0o644))
 
@@ -74,7 +74,29 @@ func TestDiscoverFindsConfigInDir(t *testing.T) {
 	assert.Equal(t, filepath.Join(dir, "blink.yaml"), got)
 }
 
-func TestDiscoverWalksUp(t *testing.T) {
+func Test_Discover_PrefersConfigNamesInOrder(t *testing.T) {
+	// the canonical priority order: visible before hidden, .yml before .yaml.
+	// blink.yml (first) is what `blink init` writes.
+	order := []string{"blink.yml", "blink.yaml", ".blink.yml", ".blink.yaml"}
+
+	// walk the priority list, each case dropping the previous winner so the next
+	// name in sequence must take over.
+	for i := range order {
+		present := order[i:]
+		t.Run("falls through to "+order[i], func(t *testing.T) {
+			dir := t.TempDir()
+			for _, name := range present {
+				require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("services:\n  - name: x\n"), 0o644))
+			}
+			got, err := Discover(dir)
+			require.NoError(t, err)
+			assert.Equal(t, filepath.Join(dir, order[i]), got,
+				"with %v present, Discover must pick the highest-priority one", present)
+		})
+	}
+}
+
+func Test_Discover_WalksUp(t *testing.T) {
 	dir := t.TempDir()
 	deep := filepath.Join(dir, "a", "b", "c")
 	require.NoError(t, os.MkdirAll(deep, 0o755))
@@ -85,14 +107,14 @@ func TestDiscoverWalksUp(t *testing.T) {
 	assert.Equal(t, filepath.Join(dir, "blink.yaml"), got)
 }
 
-func TestDiscoverReturnsNotExistWhenMissing(t *testing.T) {
+func Test_Discover_ReturnsNotExistWhenMissing(t *testing.T) {
 	dir := t.TempDir()
 
 	_, err := Discover(dir)
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
-func TestLoadResolvesDirRootRelativeToConfig(t *testing.T) {
+func Test_Load_ResolvesDirRootRelativeToConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "blink.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("services:\n  - name: x\n"), 0o644))

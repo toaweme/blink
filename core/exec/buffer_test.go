@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBufferAppendAndCount(t *testing.T) {
+func Test_Buffer_AppendAndCount(t *testing.T) {
 	b := NewBuffer()
 	assert.Equal(t, 0, b.Count())
 
@@ -22,7 +22,7 @@ func TestBufferAppendAndCount(t *testing.T) {
 	assert.Equal(t, []string{"a", "b", "c"}, b.Full())
 }
 
-func TestBufferTail(t *testing.T) {
+func Test_Buffer_Tail(t *testing.T) {
 	b := NewBuffer()
 	for _, s := range []string{"1", "2", "3", "4", "5"} {
 		b.Append(s)
@@ -33,7 +33,7 @@ func TestBufferTail(t *testing.T) {
 	assert.Empty(t, b.Tail(0))
 }
 
-func TestBufferRangeClamping(t *testing.T) {
+func Test_Buffer_RangeClamping(t *testing.T) {
 	b := NewBuffer()
 	for _, s := range []string{"a", "b", "c"} {
 		b.Append(s)
@@ -45,7 +45,7 @@ func TestBufferRangeClamping(t *testing.T) {
 	assert.Empty(t, b.Range(2, 1))
 }
 
-func TestBufferFullReturnsCopy(t *testing.T) {
+func Test_Buffer_FullReturnsCopy(t *testing.T) {
 	b := NewBuffer()
 	b.Append("a")
 	full := b.Full()
@@ -54,7 +54,7 @@ func TestBufferFullReturnsCopy(t *testing.T) {
 	assert.Equal(t, "a", b.Full()[0])
 }
 
-func TestBufferConcurrentAppend(t *testing.T) {
+func Test_Buffer_ConcurrentAppend(t *testing.T) {
 	b := NewBuffer()
 	var wg sync.WaitGroup
 	for range 50 {
@@ -70,7 +70,7 @@ func TestBufferConcurrentAppend(t *testing.T) {
 	assert.Equal(t, 1000, b.Count())
 }
 
-func TestBufferTailStreamReceivesAppends(t *testing.T) {
+func Test_Buffer_TailStreamReceivesAppends(t *testing.T) {
 	b := NewBuffer()
 	b.Append("seed")
 

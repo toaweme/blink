@@ -26,7 +26,7 @@ var (
 	_ Command = Resync{}
 )
 
-func TestCommandRoundTrip(t *testing.T) {
+func Test_Command_RoundTrip(t *testing.T) {
 	cases := []struct {
 		name string
 		cmd  Command
@@ -57,14 +57,14 @@ func TestCommandRoundTrip(t *testing.T) {
 	}
 }
 
-func TestDecodeCommandWrongKind(t *testing.T) {
+func Test_DecodeCommand_WrongKind(t *testing.T) {
 	env := protocol.Envelope{Kind: protocol.KindStatus, Payload: []byte(`{}`)}
 	_, _, err := DecodeCommand(env)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected control envelope")
 }
 
-func TestDecodeCommandUnknownVerb(t *testing.T) {
+func Test_DecodeCommand_UnknownVerb(t *testing.T) {
 	body, err := json.Marshal(envelope{ID: "x", Verb: "bogus", Payload: []byte(`{}`)})
 	require.NoError(t, err)
 	env := protocol.Envelope{Kind: protocol.KindControl, Payload: body}
@@ -74,7 +74,7 @@ func TestDecodeCommandUnknownVerb(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown verb")
 }
 
-func TestResultRoundTrip(t *testing.T) {
+func Test_Result_RoundTrip(t *testing.T) {
 	res := Result{Ok: true, Path: "/tmp/api.log"}
 	env, err := EncodeResult("rid-1", res)
 	require.NoError(t, err)
@@ -86,7 +86,7 @@ func TestResultRoundTrip(t *testing.T) {
 	assert.Equal(t, res, got)
 }
 
-func TestResultRoundTrip_ResyncFields(t *testing.T) {
+func Test_Result_RoundTrip_ResyncFields(t *testing.T) {
 	res := Result{
 		Ok:    true,
 		Lines: []string{"line one", "line two"},
@@ -104,14 +104,14 @@ func TestResultRoundTrip_ResyncFields(t *testing.T) {
 	assert.Equal(t, res, got)
 }
 
-func TestDecodeResultWrongKind(t *testing.T) {
+func Test_DecodeResult_WrongKind(t *testing.T) {
 	env := protocol.Envelope{Kind: protocol.KindControl, Payload: []byte(`{}`)}
 	_, _, err := DecodeResult(env)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected result envelope")
 }
 
-func TestDispatcherNotImplemented(t *testing.T) {
+func Test_Dispatcher_NotImplemented(t *testing.T) {
 	d := NewDispatcher()
 	res := d.Dispatch(t.Context(), List{}, RoleAdmin)
 	assert.False(t, res.Ok)
@@ -119,7 +119,7 @@ func TestDispatcherNotImplemented(t *testing.T) {
 	assert.Contains(t, res.Error, "not yet implemented")
 }
 
-func TestDispatcherRoutesToHandler(t *testing.T) {
+func Test_Dispatcher_RoutesToHandler(t *testing.T) {
 	d := NewDispatcher()
 	var seen Command
 	d.Register(VerbRestart, RoleOperator, func(_ context.Context, cmd Command) Result {
@@ -137,7 +137,7 @@ func TestDispatcherRoutesToHandler(t *testing.T) {
 	assert.Equal(t, in, seen)
 }
 
-func TestDispatcherDeniesBelowRequiredRole(t *testing.T) {
+func Test_Dispatcher_DeniesBelowRequiredRole(t *testing.T) {
 	d := NewDispatcher()
 	called := false
 	d.Register(VerbRestart, RoleOperator, func(_ context.Context, _ Command) Result {
@@ -150,7 +150,7 @@ func TestDispatcherDeniesBelowRequiredRole(t *testing.T) {
 	assert.Contains(t, res.Error, "requires role operator")
 }
 
-func TestDispatcherStampsRoleInContext(t *testing.T) {
+func Test_Dispatcher_StampsRoleInContext(t *testing.T) {
 	d := NewDispatcher()
 	var got Role
 	d.Register(VerbList, RoleViewer, func(ctx context.Context, _ Command) Result {
@@ -161,13 +161,13 @@ func TestDispatcherStampsRoleInContext(t *testing.T) {
 	assert.Equal(t, RoleAdmin, got)
 }
 
-func TestNotImplementedHelper(t *testing.T) {
+func Test_NotImplementedHelper(t *testing.T) {
 	r := NotImplemented("custom")
 	assert.False(t, r.Ok)
 	assert.Contains(t, r.Error, "custom")
 }
 
-func TestParseSignal(t *testing.T) {
+func Test_ParseSignal(t *testing.T) {
 	cases := []struct {
 		name   string
 		input  string

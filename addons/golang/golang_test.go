@@ -11,7 +11,7 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
-func TestReadWorkUses(t *testing.T) {
+func Test_ReadWorkUses(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "go.work")
 	content := "" +
@@ -31,7 +31,7 @@ func TestReadWorkUses(t *testing.T) {
 	assert.Equal(t, []string{".", "../../awee-ai/cli", "../log", "./flat"}, uses)
 }
 
-func TestPrepareRequiresPackage(t *testing.T) {
+func Test_Prepare_RequiresPackage(t *testing.T) {
 	_, err := Runtime{}.Prepare(
 		config.Config{},
 		config.Service{Name: "x", Go: &config.GoConfig{}},
@@ -47,7 +47,7 @@ func TestPrepareRequiresPackage(t *testing.T) {
 	assert.Contains(t, err.Error(), "requires a `go:` block")
 }
 
-func TestPrepareSynthesizesCommands(t *testing.T) {
+func Test_Prepare_SynthesizesCommands(t *testing.T) {
 	plan, err := Runtime{}.Prepare(
 		config.Config{DirRoot: t.TempDir()},
 		config.Service{
@@ -67,7 +67,7 @@ func TestPrepareSynthesizesCommands(t *testing.T) {
 	assert.Equal(t, []string{"go", "mod", "sum"}, plan.Defaults.Fs.Extensions)
 }
 
-func TestPrepareWorkspaceWatches(t *testing.T) {
+func Test_Prepare_WorkspaceWatches(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "api"), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "shared"), 0o755))

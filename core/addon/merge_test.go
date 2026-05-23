@@ -8,7 +8,7 @@ import (
 	"github.com/toaweme/blink/core/config"
 )
 
-func TestMergeService(t *testing.T) {
+func Test_MergeService(t *testing.T) {
 	t.Run("user dir wins over overlay", func(t *testing.T) {
 		got := MergeService(
 			config.Service{Name: "s", Dir: "user"},
