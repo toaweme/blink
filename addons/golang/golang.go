@@ -31,7 +31,12 @@ func (r Runtime) Prepare(cfg config.Config, svc config.Service) (addon.Plan, err
 
 	out := gc.Out
 	if out == "" {
-		out = "./build/" + svc.Name
+		// derive the build output from Paths.BuildDir (under <DirRoot>/.blink),
+		// so every artifact shares one root and the dir is never hardcoded here.
+		// Resolve is idempotent, covering callers that pass an unresolved config;
+		// the result is absolute so it is correct regardless of svc.Dir.
+		cfg.Paths.Resolve(cfg.DirRoot)
+		out = filepath.Join(cfg.Paths.BuildDir, svc.Name)
 	}
 
 	build := &config.Command{Command: fmt.Sprintf("go build -o %s %s", shellEscape(out), shellEscape(gc.Package))}

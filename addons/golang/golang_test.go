@@ -48,8 +48,9 @@ func Test_Prepare_RequiresPackage(t *testing.T) {
 }
 
 func Test_Prepare_SynthesizesCommands(t *testing.T) {
+	root := t.TempDir()
 	plan, err := Runtime{}.Prepare(
-		config.Config{DirRoot: t.TempDir()},
+		config.Config{DirRoot: root},
 		config.Service{
 			Name: "api.schema",
 			Go: &config.GoConfig{
@@ -61,8 +62,12 @@ func Test_Prepare_SynthesizesCommands(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, plan.Defaults.Commands.Build)
 	require.NotNil(t, plan.Defaults.Commands.Run)
-	assert.Equal(t, "go build -o ./build/api.schema ./cmd/v2/schema", plan.Defaults.Commands.Build.Command)
-	assert.Equal(t, "./build/api.schema run --verbosity=2", plan.Defaults.Commands.Run.Command)
+
+	// the build output derives from Paths.BuildDir (under <DirRoot>/.blink/build),
+	// not a hardcoded ./build; absolute so it is correct regardless of svc.Dir.
+	out := filepath.Join(root, ".blink", "build", "api.schema")
+	assert.Equal(t, "go build -o "+out+" ./cmd/v2/schema", plan.Defaults.Commands.Build.Command)
+	assert.Equal(t, out+" run --verbosity=2", plan.Defaults.Commands.Run.Command)
 	assert.True(t, plan.Defaults.Commands.Run.Service)
 	assert.Equal(t, []string{"go", "mod", "sum"}, plan.Defaults.Fs.Extensions)
 }

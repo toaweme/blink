@@ -14,42 +14,68 @@ type Paths struct {
 	// ConfigHome is the user-scoped config directory (~/.blink by default).
 	// Holds auth tokens, nag state, CLI preferences. Override: $BLINK_CONFIG_HOME.
 	ConfigHome string `toml:"config_home,omitempty" json:"config_home,omitempty" yaml:"config_home,omitempty" env:"BLINK_CONFIG_HOME"`
-	// ControlDir is the project-scoped directory for the unix control socket
-	// and any other per-project runtime state. Default: <DirRoot>/.blink.
-	// Override: $BLINK_CONTROL_DIR.
+	// ControlDir is the per-project root for everything blink writes under the
+	// project: logs, build output, and (later) the unix control socket. It is
+	// the one directory the other per-project paths derive from. Default:
+	// <DirRoot>/.blink. Override: $BLINK_CONTROL_DIR.
 	ControlDir string `toml:"control_dir,omitempty" json:"control_dir,omitempty" yaml:"control_dir,omitempty" env:"BLINK_CONTROL_DIR"`
-	// LogDir is where headless-mode .log files are written for agent consumption.
-	// Default: <DirRoot>/.blink/logs. Override: $BLINK_LOG_DIR.
+	// LogDir is where per-service .log files are written. Default:
+	// <ControlDir>/logs. Override: $BLINK_LOG_DIR.
 	LogDir string `toml:"log_dir,omitempty" json:"log_dir,omitempty" yaml:"log_dir,omitempty" env:"BLINK_LOG_DIR"`
+	// BuildDir is where the go runtime writes compiled binaries. Kept under the
+	// control dir so build output shares the project's one artifact root.
+	// Default: <ControlDir>/build. Override: $BLINK_BUILD_DIR.
+	BuildDir string `toml:"build_dir,omitempty" json:"build_dir,omitempty" yaml:"build_dir,omitempty" env:"BLINK_BUILD_DIR"`
 }
+
+const (
+	// blinkDirName is the directory blink keeps its state in, both user-scoped
+	// (~/.blink) and per-project (<DirRoot>/.blink). Named once here so the
+	// literal never appears scattered across the codebase.
+	blinkDirName = ".blink"
+	// logSubdir and buildSubdir live under the control dir, so every per-project
+	// artifact shares one root.
+	logSubdir   = "logs"
+	buildSubdir = "build"
+)
 
 // Resolve fills any empty fields with platform defaults. Call after loading
 // the config and before anything reads a path.
 func (p *Paths) Resolve(dirRoot string) {
-	home, _ := os.UserHomeDir()
-
 	if p.ConfigHome == "" {
 		if v := os.Getenv("BLINK_CONFIG_HOME"); v != "" {
 			p.ConfigHome = v
-		} else if home != "" {
-			p.ConfigHome = filepath.Join(home, ".blink")
+		} else if home, _ := os.UserHomeDir(); home != "" {
+			p.ConfigHome = filepath.Join(home, blinkDirName)
 		}
 	}
 
-	// ControlDir / LogDir are populated from their env: tags by the cli layer
-	// before Resolve runs, so Resolve only fills the default and resolves a
-	// relative override against dirRoot.
-	if p.ControlDir == "" {
-		p.ControlDir = filepath.Join(dirRoot, ".blink")
-	} else if !filepath.IsAbs(p.ControlDir) {
-		p.ControlDir = filepath.Join(dirRoot, p.ControlDir)
-	}
+	// ControlDir is the per-project root; LogDir and BuildDir derive from it so
+	// the control-dir name is written once and every artifact lands under it.
+	// A value may already be set from the config file or the env: tag; an
+	// explicit (possibly relative) value is honored, otherwise the default
+	// applies. Resolve also reads the env directly so the documented overrides
+	// work regardless of whether the cli layer pre-filled the struct.
+	p.ControlDir = resolveDir(p.ControlDir, "BLINK_CONTROL_DIR", dirRoot, filepath.Join(dirRoot, blinkDirName))
+	p.LogDir = resolveDir(p.LogDir, "BLINK_LOG_DIR", dirRoot, filepath.Join(p.ControlDir, logSubdir))
+	p.BuildDir = resolveDir(p.BuildDir, "BLINK_BUILD_DIR", dirRoot, filepath.Join(p.ControlDir, buildSubdir))
+}
 
-	if p.LogDir == "" {
-		p.LogDir = filepath.Join(dirRoot, ".blink", "logs")
-	} else if !filepath.IsAbs(p.LogDir) {
-		p.LogDir = filepath.Join(dirRoot, p.LogDir)
+// resolveDir picks the directory for one path field: the value already set
+// (config file or cli) wins, else the env override, else def. A relative value
+// resolves against dirRoot; def is expected to be absolute already.
+func resolveDir(current, envKey, dirRoot, def string) string {
+	v := current
+	if v == "" {
+		v = os.Getenv(envKey)
 	}
+	if v == "" {
+		return def
+	}
+	if !filepath.IsAbs(v) {
+		return filepath.Join(dirRoot, v)
+	}
+	return v
 }
 
 // All returns every directory path for enumeration (used by nuke).
@@ -58,6 +84,7 @@ func (p *Paths) All() []PathEntry {
 		{Path: p.ConfigHome, Description: "user-scoped config", UserScoped: true},
 		{Path: p.ControlDir, Description: "project state dir"},
 		{Path: p.LogDir, Description: "service log files"},
+		{Path: p.BuildDir, Description: "build output"},
 	}
 }
 
@@ -81,9 +108,6 @@ type Config struct {
 	UI string `toml:"ui,omitempty" json:"ui,omitempty" yaml:"ui,omitempty"`
 	// UIStrategy is reserved for future split/tab layout options.
 	UIStrategy string `toml:"ui_strategy,omitempty" json:"ui_strategy,omitempty" yaml:"ui_strategy,omitempty"`
-	// DirTemp is the directory where temporary build artifacts live; watchers
-	// exclude it from change detection.
-	DirTemp string `toml:"dir_temp,omitempty" json:"dir_temp,omitempty" yaml:"dir_temp,omitempty"`
 	// DirRoot is the project root all service Dir/Include paths resolve against.
 	DirRoot string `toml:"dir_root,omitempty" json:"dir_root,omitempty" yaml:"dir_root,omitempty"`
 	// Services is the ordered list of services blink supervises.
@@ -250,7 +274,8 @@ type GoConfig struct {
 	Package string `toml:"package,omitempty" json:"package,omitempty" yaml:"package,omitempty"`
 	// Args are passed to the built binary on `Run`.
 	Args []string `toml:"args,omitempty" json:"args,omitempty" yaml:"args,omitempty"`
-	// Out is the build output path. Default: "./build/<service-name>".
+	// Out is the build output path. Default: <Paths.BuildDir>/<service-name>
+	// (under the project's .blink dir). Set it to override the location.
 	Out string `toml:"out,omitempty" json:"out,omitempty" yaml:"out,omitempty"`
 	// Workspace toggles go.work workspace watching. Default: true when a
 	// go.work file is found alongside the service.
@@ -294,7 +319,7 @@ type Fs struct {
 // any depth, regardless of service config. The watcher's default globs and
 // config detection both build on this, so a detected service never re-emits an
 // exclude blink already applies.
-var DefaultExcludeDirs = []string{".git", "node_modules", "dist", "build", ".next", ".idea", ".vscode"}
+var DefaultExcludeDirs = []string{".git", "node_modules", "dist", "build", ".next", ".idea", ".vscode", blinkDirName}
 
 // DefaultExcludes returns the glob patterns blink applies to every watcher:
 // each DefaultExcludeDirs entry at any depth, plus .DS_Store files.
