@@ -14,6 +14,7 @@ import (
 
 	"github.com/toaweme/blink/addons/docker"
 	"github.com/toaweme/blink/addons/golang"
+	"github.com/toaweme/blink/addons/node"
 	"github.com/toaweme/blink/addons/portkill"
 	"github.com/toaweme/blink/addons/shell"
 	"github.com/toaweme/blink/blink/app"
@@ -36,6 +37,7 @@ func run() error {
 		shell.Runtime{},
 		golang.Runtime{},
 		docker.Runtime{},
+		node.Runtime{},
 	)
 	reg.AddHook(portkill.Hook{})
 

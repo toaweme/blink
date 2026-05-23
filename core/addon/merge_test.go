@@ -40,6 +40,22 @@ func TestMergeService(t *testing.T) {
 		assert.Equal(t, "go build", got.Commands.Build.Command, "overlay Build used when base has none")
 	})
 
+	t.Run("setup commands: overlay runtime install runs before user setup", func(t *testing.T) {
+		got := MergeService(
+			config.Service{Commands: config.Commands{
+				Setup: []config.Command{{Command: "user prep"}},
+			}},
+			config.Service{Commands: config.Commands{
+				Setup: []config.Command{{Command: "npm install"}},
+			}},
+		)
+		var cmds []string
+		for _, c := range got.Commands.Setup {
+			cmds = append(cmds, c.Command)
+		}
+		assert.Equal(t, []string{"npm install", "user prep"}, cmds)
+	})
+
 	t.Run("slices append overlay then base, deduped", func(t *testing.T) {
 		got := MergeService(
 			config.Service{Fs: config.Fs{

@@ -26,6 +26,11 @@ type Plan struct {
 	// ExtraWatches contributes additional recursive watch roots. Paths are
 	// resolved against cfg.DirRoot by the watcher.
 	ExtraWatches []string
+	// SetupTriggers are base filenames (e.g. "package.json", "pnpm-lock.yaml")
+	// whose change re-runs Commands.Setup in addition to the normal reload.
+	// They are matched regardless of Fs.Extensions, so manifests and lockfiles
+	// are observed even when their extension is not otherwise watched.
+	SetupTriggers []string
 	// Manager, if non-nil, takes over Start/Stop from the supervisor.
 	Manager Manager
 }

@@ -58,6 +58,9 @@ func dedupPorts(in []config.Port) []config.Port {
 
 func mergeCommands(base, overlay config.Commands) config.Commands {
 	return config.Commands{
+		// runtime-contributed setup (overlay) runs before any the user added
+		// (base), so dependency installs precede custom preparation.
+		Setup: append(append([]config.Command{}, overlay.Setup...), base.Setup...),
 		Build: mergeCommandPtr(base.Build, overlay.Build),
 		Run:   mergeCommandPtr(base.Run, overlay.Run),
 	}

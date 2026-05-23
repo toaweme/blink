@@ -1265,7 +1265,7 @@ func (m *Model) statusDot(status string) string {
 		shades := []lipgloss.Color{"82", "118", "82", "46"}
 		c := shades[m.pulsePhase%len(shades)]
 		return lipgloss.NewStyle().Foreground(c).Render("●")
-	case "building", "restarting":
+	case "building", "restarting", "installing":
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Render(m.spinner.View())
 	case "crashed":
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render("✖")

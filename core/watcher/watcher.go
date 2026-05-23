@@ -37,6 +37,10 @@ type Event struct {
 	Kind    EventKind
 	// Paths is the deduped set of paths that contributed to this event.
 	Paths []string
+	// SetupTrigger is true when at least one contributing path is a
+	// runtime-declared setup trigger (a manifest or lockfile), so the
+	// supervisor re-runs Commands.Setup alongside the restart.
+	SetupTrigger bool
 }
 
 // Watcher watches one service's filesystem footprint and emits debounced events.
@@ -45,10 +49,11 @@ type Watcher struct {
 	root    string
 	roots   []string // absolute recursive roots
 
-	extensions   map[string]struct{}
-	includeGlobs []glob.Glob
-	excludeGlobs []glob.Glob
-	deleteGlobs  []glob.Glob
+	extensions    map[string]struct{}
+	setupTriggers map[string]struct{} // base filenames that re-run Commands.Setup
+	includeGlobs  []glob.Glob
+	excludeGlobs  []glob.Glob
+	deleteGlobs   []glob.Glob
 
 	// strictInclude is set when every Fs.Include entry resolves to a file, not a
 	// directory. Then only paths matching an include glob fire restarts, and the
@@ -91,12 +96,13 @@ func New(cfg config.Config, svc config.Service, extraRoots ...string) (*Watcher,
 	}
 
 	w := &Watcher{
-		service:    svc,
-		root:       cfg.DirRoot,
-		extensions: extSet(svc.Fs.Extensions),
-		fsw:        fsw,
-		out:        make(chan Event, 8),
-		seen:       map[string]struct{}{},
+		service:       svc,
+		root:          cfg.DirRoot,
+		extensions:    extSet(svc.Fs.Extensions),
+		setupTriggers: map[string]struct{}{},
+		fsw:           fsw,
+		out:           make(chan Event, 8),
+		seen:          map[string]struct{}{},
 	}
 
 	for _, pat := range svc.Fs.Include {
@@ -123,6 +129,32 @@ func New(cfg config.Config, svc config.Service, extraRoots ...string) (*Watcher,
 
 	w.roots = w.resolveRoots(extraRoots)
 	return w, nil
+}
+
+// SetSetupTriggers registers base filenames whose change re-runs Commands.Setup
+// (in addition to the normal restart). Call before Start. Names are matched by
+// base name regardless of Fs.Extensions, so lockfiles are observed even when
+// their extension is not otherwise watched.
+func (w *Watcher) SetSetupTriggers(names []string) {
+	for _, n := range names {
+		w.setupTriggers[filepath.Base(n)] = struct{}{}
+	}
+}
+
+// isSetupTrigger reports whether path's base name is a registered setup trigger.
+func (w *Watcher) isSetupTrigger(path string) bool {
+	_, ok := w.setupTriggers[filepath.Base(path)]
+	return ok
+}
+
+// anySetupTrigger reports whether any path is a registered setup trigger.
+func (w *Watcher) anySetupTrigger(paths []string) bool {
+	for _, p := range paths {
+		if w.isSetupTrigger(p) {
+			return true
+		}
+	}
+	return false
 }
 
 // Events returns the debounced event channel. It is closed when Start's
@@ -265,7 +297,8 @@ func (w *Watcher) loop(ctx context.Context) {
 
 	flush := func() {
 		if len(pendingChange) > 0 {
-			w.emit(Event{Service: w.service.Name, Kind: EventChange, Paths: keys(pendingChange)})
+			paths := keys(pendingChange)
+			w.emit(Event{Service: w.service.Name, Kind: EventChange, Paths: paths, SetupTrigger: w.anySetupTrigger(paths)})
 			pendingChange = map[string]struct{}{}
 		}
 		if len(pendingDelete) > 0 {
@@ -327,6 +360,11 @@ func (w *Watcher) handle(ev fsnotify.Event, change, deletes map[string]struct{})
 func (w *Watcher) matchesChange(path string) bool {
 	if w.isExcluded(path) {
 		return false
+	}
+	// a manifest/lockfile change always reloads (and re-runs setup), even when
+	// its extension is not in the watched set.
+	if w.isSetupTrigger(path) {
+		return true
 	}
 	if !w.extOK(path) {
 		return false

@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/toaweme/log"
@@ -32,6 +33,9 @@ const (
 	StatusPending Status = "pending"
 	// StatusBuilding means a build step is running before the service starts.
 	StatusBuilding Status = "building"
+
+	// StatusInstalling means the service's one-time Setup commands are running.
+	StatusInstalling Status = "installing"
 	// StatusRunning means the service process is up.
 	StatusRunning Status = "running"
 	// StatusRestarting means the service is being restarted.
@@ -122,6 +126,10 @@ type serviceState struct {
 
 	restart chan struct{}
 	done    chan struct{}
+
+	// setupPending is set by the watcher path when a setup-trigger file changes,
+	// so the next lifecycle re-runs Commands.Setup even though it is not a boot.
+	setupPending atomic.Bool
 
 	mu      sync.Mutex
 	runner  *exec.Runner
@@ -250,6 +258,7 @@ func (s *Supervisor) Start(ctx context.Context) error {
 			log.Warn("supervisor: watcher init failed", "service", name, "error", err)
 			continue
 		}
+		w.SetSetupTriggers(st.plan.SetupTriggers)
 		if err := w.Start(s.ctx); err != nil { //nolint:contextcheck // s.ctx is derived from Start's ctx
 			log.Warn("supervisor: watcher start failed", "service", name, "error", err)
 			continue
@@ -313,7 +322,7 @@ func (s *Supervisor) run(st *serviceState) {
 	defer close(st.done)
 
 	s.waitForDeps(st)
-	s.lifecycle(st)
+	s.lifecycle(st, true)
 
 	for {
 		select {
@@ -322,7 +331,7 @@ func (s *Supervisor) run(st *serviceState) {
 		case <-st.restart:
 			s.publishStatus(st.svc.Name, "", StatusRestarting, nil)
 			s.stopRunner(st)
-			s.lifecycle(st)
+			s.lifecycle(st, false)
 			s.cascadeRestart(st)
 		}
 	}
@@ -418,9 +427,23 @@ func (s *Supervisor) forwardManagerLogs(service string, ch <-chan addon.LogLine)
 	}
 }
 
-func (s *Supervisor) lifecycle(st *serviceState) {
+// lifecycle drives one boot-or-restart of a service: optional setup, optional
+// build, then the run command. boot is true only for the initial start; setup
+// also runs when a setup-trigger file changed since the last lifecycle.
+func (s *Supervisor) lifecycle(st *serviceState, boot bool) {
 	if s.ctx.Err() != nil {
 		return
+	}
+	if runSetup := boot || st.setupPending.Swap(false); runSetup && len(st.svc.Commands.Setup) > 0 {
+		s.setStatus(st, StatusInstalling)
+		if err := s.runChain(st, st.svc.Commands.Setup); err != nil {
+			s.setStatusErr(st, StatusCrashed, err)
+			log.Error("setup failed", "service", st.svc.Name, "error", err)
+			return
+		}
+		if s.ctx.Err() != nil {
+			return
+		}
 	}
 	if st.svc.Commands.Build != nil {
 		s.setStatus(st, StatusBuilding)
@@ -606,7 +629,12 @@ func (s *Supervisor) waitForDeps(st *serviceState) {
 func (s *Supervisor) forwardWatcher(name string, w *watcher.Watcher) {
 	defer s.wg.Done()
 	for ev := range w.Events() {
-		log.Debug("watcher event", "service", name, "kind", ev.Kind, "paths", ev.Paths)
+		log.Debug("watcher event", "service", name, "kind", ev.Kind, "paths", ev.Paths, "setup", ev.SetupTrigger)
+		if ev.SetupTrigger {
+			if st := s.services[name]; st != nil {
+				st.setupPending.Store(true)
+			}
+		}
 		_ = s.Restart(name)
 	}
 }

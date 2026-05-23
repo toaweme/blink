@@ -552,6 +552,17 @@ func serviceCommand(svc config.Service) string {
 			file = svc.Docker.File
 		}
 		return "compose up " + file
+	case "node":
+		pm, script := "npm", "dev"
+		if svc.Node != nil {
+			if svc.Node.PackageManager != "" {
+				pm = svc.Node.PackageManager
+			}
+			if svc.Node.Script != "" {
+				script = svc.Node.Script
+			}
+		}
+		return pm + " run " + script
 	default:
 		if svc.Commands.Run != nil && svc.Commands.Run.Command != "" {
 			return svc.Commands.Run.Command

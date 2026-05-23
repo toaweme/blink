@@ -53,6 +53,37 @@ func TestDedupe(t *testing.T) {
 	assert.Empty(t, dedupe(nil))
 }
 
+// Test_MatchesChange_SetupTrigger verifies that a registered setup-trigger
+// file (manifest or lockfile) is matched even when its extension is not in the
+// watched set, while ordinary source files match without being flagged as
+// setup triggers.
+func Test_MatchesChange_SetupTrigger(t *testing.T) {
+	cfg := config.Config{DirRoot: t.TempDir()}
+	svc := config.Service{
+		Name:   "web",
+		Dir:    ".",
+		Reload: config.Reload{Reload: true},
+		Fs:     config.Fs{Extensions: []string{"js", "ts"}},
+	}
+	w, err := New(cfg, svc)
+	require.NoError(t, err)
+	w.SetSetupTriggers([]string{"package.json", "pnpm-lock.yaml"})
+
+	root := cfg.DirRoot
+	js := filepath.Join(root, "src", "app.js")
+	pkg := filepath.Join(root, "package.json")
+	lock := filepath.Join(root, "pnpm-lock.yaml") // .yaml is not a watched extension
+	txt := filepath.Join(root, "notes.txt")
+
+	assert.True(t, w.matchesChange(lock), "lockfile matches via setup trigger despite unwatched extension")
+	assert.True(t, w.matchesChange(pkg), "manifest matches via setup trigger")
+	assert.True(t, w.matchesChange(js), "watched source file matches normally")
+	assert.False(t, w.matchesChange(txt), "unwatched, non-trigger file does not match")
+
+	assert.True(t, w.anySetupTrigger([]string{js, pkg}), "a change set touching the manifest is a setup trigger")
+	assert.False(t, w.anySetupTrigger([]string{js}), "a source-only change set is not a setup trigger")
+}
+
 // Test_AddRecursive_NoDoubleCount verifies that overlapping watch roots (an
 // Fs.Include directory nested under the implicit service-dir root) count each
 // file and directory exactly once, rather than once per covering root.

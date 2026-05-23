@@ -156,11 +156,13 @@ type Service struct {
 	Dir string `toml:"dir,omitempty" json:"dir,omitempty" yaml:"dir,omitempty"`
 	// Runtime selects the lifecycle owner for this service. Empty = "shell"
 	// (the default; runs the configured Commands as `sh -c`). Other values:
-	// "docker", "go". A runtime contributes defaults that are merged into the
-	// rest of this struct - anything the user sets explicitly wins.
+	// "docker", "go", "node". A runtime contributes defaults that are merged
+	// into the rest of this struct - anything the user sets explicitly wins.
 	Runtime string `toml:"runtime,omitempty" json:"runtime,omitempty" yaml:"runtime,omitempty"`
 	// Docker holds the typed config for `runtime: docker` services.
 	Docker *DockerConfig `toml:"docker,omitempty" json:"docker,omitempty" yaml:"docker,omitempty"`
+	// Node holds the typed config for `runtime: node` services.
+	Node *NodeConfig `toml:"node,omitempty" json:"node,omitempty" yaml:"node,omitempty"`
 	// Go holds the typed config for `runtime: go` services.
 	Go       *GoConfig `toml:"go,omitempty" json:"go,omitempty" yaml:"go,omitempty"`
 	Commands Commands  `toml:"commands,omitempty" json:"commands,omitempty" yaml:"commands,omitempty"`
@@ -216,6 +218,31 @@ func (d DockerConfig) IsZero() bool {
 		len(d.Logs) == 0 && d.Wait == nil && !d.StopOnExit
 }
 
+// NodeConfig configures a `runtime: node` service. The runtime detects the
+// package manager from the service's lockfile and synthesizes a
+// `<pm> run <script>` command, optionally preceded by a guarded install.
+type NodeConfig struct {
+	// Script is the package.json script to run as `<pm> run <script>`.
+	// Default: "dev".
+	Script string `toml:"script,omitempty" json:"script,omitempty" yaml:"script,omitempty"`
+	// PackageManager overrides the auto-detected manager ("npm", "pnpm",
+	// "yarn", "bun"). Empty = detect from the lockfile.
+	PackageManager string `toml:"package_manager,omitempty" json:"package_manager,omitempty" yaml:"package_manager,omitempty"`
+	// Install toggles the dependency install step. Nil defaults to true.
+	// When enabled the runtime emits `<pm> install` as a Setup command, which
+	// runs once on boot and again only when package.json changes, never on an
+	// ordinary source reload. Set false to skip installs entirely (e.g. to
+	// manage them yourself via a custom commands.setup).
+	Install *bool `toml:"install,omitempty" json:"install,omitempty" yaml:"install,omitempty"`
+}
+
+// IsZero reports whether every field is its zero value, so the writer drops an
+// all-default node block instead of serializing "node: {}". yaml.v3 honors this
+// (IsZeroer) for omitempty.
+func (n NodeConfig) IsZero() bool {
+	return n.Script == "" && n.PackageManager == "" && n.Install == nil
+}
+
 // GoConfig configures a `runtime: go` service. The runtime synthesizes build
 // and run commands and auto-watches `go.work` module roots.
 type GoConfig struct {
@@ -244,8 +271,13 @@ type Command struct {
 
 // Commands groups a service's optional build and run commands.
 type Commands struct {
-	Build *Command `toml:"build,omitempty" json:"build,omitempty" yaml:"build,omitempty"`
-	Run   *Command `toml:"run,omitempty" json:"run,omitempty" yaml:"run,omitempty"`
+	// Setup runs once when the service first boots and again only when a
+	// runtime-declared trigger file changes (e.g. package.json), never on an
+	// ordinary source-file reload. It is where one-time preparation like
+	// dependency installs belongs, so a live reload stays fast.
+	Setup []Command `toml:"setup,omitempty" json:"setup,omitempty" yaml:"setup,omitempty"`
+	Build *Command  `toml:"build,omitempty" json:"build,omitempty" yaml:"build,omitempty"`
+	Run   *Command  `toml:"run,omitempty" json:"run,omitempty" yaml:"run,omitempty"`
 }
 
 // Fs configures the file change watcher for a service. Include paths (resolved
