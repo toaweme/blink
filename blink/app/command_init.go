@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/toaweme/cli"
 
@@ -60,7 +61,13 @@ func (c *InitCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
 		return runtimeProbe(probeCtx, c.reg, options.Cwd, svc)
 	}
 
-	kept, err := configform.PickServices("blink init", services, nil, probeFn)
+	// add-from-path (`f`) scans a sibling directory and rebases its services'
+	// Dir against the project root.
+	scanPathFn := func(path string) ([]config.Service, error) {
+		return scanServicesAt(options.Cwd, path)
+	}
+
+	kept, err := configform.PickServices("blink init", services, nil, scanPathFn, probeFn)
 	if err != nil {
 		if errors.Is(err, configform.ErrCanceled) {
 			fmt.Println("aborted, nothing written")
@@ -106,6 +113,50 @@ func scanServices(cwd string) ([]config.Service, error) {
 		if len(services[i].Ports) == 0 && dirCount[services[i].Dir] == 1 {
 			services[i].Ports = detect.SniffPorts(cwd, services[i])
 		}
+	}
+	return services, nil
+}
+
+// scanServicesAt scans target (an absolute path, or one relative to
+// projectRoot) for services and rebases each service's Dir to be relative to
+// projectRoot, so services discovered outside the project root run from the
+// right place. It backs the init/edit picker's add-from-path action, letting a
+// single blink.yaml supervise repos that live in sibling directories.
+func scanServicesAt(projectRoot, target string) ([]config.Service, error) {
+	if strings.TrimSpace(target) == "" {
+		return nil, errors.New("no directory given")
+	}
+	abs := target
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(projectRoot, target)
+	}
+	abs = filepath.Clean(abs)
+
+	info, err := os.Stat(abs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read directory %q: %w", target, err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("%q is not a directory", target)
+	}
+
+	// scanServices sniffs ports against abs, so it must run before the rebase
+	// while each service's Dir is still relative to the scanned root.
+	services, err := scanServices(abs)
+	if err != nil {
+		return nil, err
+	}
+
+	rel, err := filepath.Rel(projectRoot, abs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve %q relative to the project root: %w", abs, err)
+	}
+	for i := range services {
+		dir := filepath.ToSlash(filepath.Join(rel, services[i].Dir))
+		if dir == "." {
+			dir = ""
+		}
+		services[i].Dir = dir
 	}
 	return services, nil
 }

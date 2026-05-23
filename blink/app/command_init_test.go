@@ -114,3 +114,81 @@ func Test_TrimWriteDefaults_PreservesNonDefaultDocker(t *testing.T) {
 		t.Fatal("StopOnExit lost")
 	}
 }
+
+// Test_ScanServicesAt_RebasesDir covers the picker's add-from-path action: a Go
+// service detected in a sibling directory is rebased so its Dir is relative to
+// the project root, letting one blink.yaml supervise repos outside its tree.
+func Test_ScanServicesAt_RebasesDir(t *testing.T) {
+	root := t.TempDir()
+	project := filepath.Join(root, "app")
+	ui := filepath.Join(root, "ui")
+	for _, d := range []string{project, filepath.Join(ui, "cmd", "web")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
+		}
+	}
+	write := func(p, body string) {
+		t.Helper()
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", p, err)
+		}
+	}
+	write(filepath.Join(ui, "go.mod"), "module ui\n\ngo 1.25\n")
+	write(filepath.Join(ui, "cmd", "web", "main.go"), "package main\n\nfunc main() {}\n")
+
+	tests := []struct {
+		name    string
+		target  string // as the user would type it
+		wantDir string
+	}{
+		{"relative sibling", "../ui", "../ui"},
+		{"absolute path", ui, "../ui"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			services, err := scanServicesAt(project, tt.target)
+			if err != nil {
+				t.Fatalf("scanServicesAt: %v", err)
+			}
+			var web *config.Service
+			for i := range services {
+				if services[i].Runtime == "go" {
+					web = &services[i]
+				}
+			}
+			if web == nil {
+				t.Fatalf("no go service detected in %v", services)
+			}
+			if web.Dir != tt.wantDir {
+				t.Fatalf("Dir = %q, want %q", web.Dir, tt.wantDir)
+			}
+			// the go package stays relative to the (rebased) service dir.
+			if web.Go == nil || web.Go.Package != "./cmd/web" {
+				t.Fatalf("Go.Package = %v, want ./cmd/web", web.Go)
+			}
+		})
+	}
+}
+
+func Test_ScanServicesAt_Errors(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "afile")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	tests := []struct {
+		name   string
+		target string
+	}{
+		{"missing directory", "../does-not-exist"},
+		{"target is a file", "afile"},
+		{"empty target", "   "},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := scanServicesAt(root, tt.target); err == nil {
+				t.Fatalf("scanServicesAt(%q) expected error", tt.target)
+			}
+		})
+	}
+}

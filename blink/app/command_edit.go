@@ -44,6 +44,10 @@ func (c *EditCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
 	// re-detect (`d`) merges newly added services into the picker.
 	detectFn := func() ([]config.Service, error) { return scanServices(options.Cwd) }
 
+	// add-from-path (`f`) scans a sibling directory and rebases its services'
+	// Dir against the project root.
+	scanPathFn := func(p string) ([]config.Service, error) { return scanServicesAt(options.Cwd, p) }
+
 	// cancel any background probe still running when edit returns.
 	probeCtx, cancelProbes := context.WithCancel(context.Background())
 	defer cancelProbes()
@@ -51,7 +55,7 @@ func (c *EditCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
 		return runtimeProbe(probeCtx, c.reg, options.Cwd, svc)
 	}
 
-	kept, err := configform.PickServices("blink edit · "+filepath.Base(path), cfg.Services, detectFn, probeFn)
+	kept, err := configform.PickServices("blink edit · "+filepath.Base(path), cfg.Services, detectFn, scanPathFn, probeFn)
 	if err != nil {
 		if errors.Is(err, configform.ErrCanceled) {
 			fmt.Println("aborted, no changes written")

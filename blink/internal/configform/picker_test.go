@@ -197,3 +197,47 @@ func Test_Picker_DetectGatedByAllow(t *testing.T) {
 		t.Fatalf("d result = %d, want resDetect", got)
 	}
 }
+
+func Test_Picker_AddPathGatedByAllow(t *testing.T) {
+	// allowAddPath off: `f` is inert.
+	off := send(newPicker("a"), keyMsg("f"))
+	if off.result != resCancel {
+		t.Fatalf("f with allowAddPath=false set result to %d, want unchanged", off.result)
+	}
+	m := newPicker("a")
+	m.allowAddPath = true
+	if got := send(m, keyMsg("f")).result; got != resAddPath {
+		t.Fatalf("f result = %d, want resAddPath", got)
+	}
+}
+
+func Test_RowCommand_ShowsExternalDir(t *testing.T) {
+	tests := []struct {
+		name string
+		svc  config.Service
+		want string
+	}{
+		{
+			name: "root service shows the bare command",
+			svc:  config.Service{Runtime: "go", Go: &config.GoConfig{Package: "./cmd/api"}},
+			want: "go run ./cmd/api",
+		},
+		{
+			name: "external service is prefixed with its dir",
+			svc:  config.Service{Dir: "../ui", Runtime: "go", Go: &config.GoConfig{Package: "./cmd/web"}},
+			want: "../ui · go run ./cmd/web",
+		},
+		{
+			name: "dot dir is treated as root",
+			svc:  config.Service{Dir: ".", Runtime: "shell", Commands: config.Commands{Run: &config.Command{Command: "make dev"}}},
+			want: "make dev",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := rowCommand(tt.svc); got != tt.want {
+				t.Fatalf("rowCommand() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

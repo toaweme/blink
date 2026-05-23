@@ -25,6 +25,31 @@ func EditService(svc *config.Service, others []string) error {
 	}
 }
 
+// promptScanPath asks for a directory to scan for services. canceled is true
+// when the user backs out (esc/ctrl+c), meaning add nothing.
+func promptScanPath() (path string, canceled bool, err error) {
+	in := huh.NewInput().
+		Title("Scan directory for services").
+		Description("absolute, or relative to the project root (e.g. ../ui, /work/api)").
+		Value(&path)
+	if e := Run(huh.NewForm(huh.NewGroup(in))); e != nil {
+		if errors.Is(e, huh.ErrUserAborted) {
+			return "", true, nil
+		}
+		return "", false, fmt.Errorf("failed to run scan-path prompt: %w", e)
+	}
+	return path, false, nil
+}
+
+// dirField edits a service's working directory, relative to the project root.
+// Blank means the root itself; "../ui" points at a sibling repo.
+func dirField(svc *config.Service) *huh.Input {
+	return huh.NewInput().
+		Title("Working directory").
+		Description("relative to the project root, blank = root (e.g. ../ui)").
+		Value(&svc.Dir)
+}
+
 func nameField(svc *config.Service, others []string) *huh.Input {
 	return huh.NewInput().
 		Title("Name").
@@ -53,6 +78,7 @@ func editShell(svc *config.Service, others []string) error {
 
 	if err := Run(huh.NewForm(huh.NewGroup(
 		nameField(svc, others),
+		dirField(svc),
 		huh.NewInput().
 			Title("Run command").
 			Description("the long-running command (e.g. ./bin/api, npm run dev)").
@@ -90,6 +116,7 @@ func editGo(svc *config.Service, others []string) error {
 
 	if err := Run(huh.NewForm(huh.NewGroup(
 		nameField(svc, others),
+		dirField(svc),
 		huh.NewInput().
 			Title("Go package").
 			Description("path passed to `go build` (e.g. ./cmd/api)").
@@ -128,6 +155,7 @@ func editDocker(svc *config.Service, others []string) error {
 	// leaves every other field arrow-navigable.
 	group := []huh.Field{
 		nameField(svc, others),
+		dirField(svc),
 		huh.NewConfirm().
 			Title("Stop containers when blink exits?").
 			Description("Keep leaves them running so the next start reuses warm databases (recommended)").

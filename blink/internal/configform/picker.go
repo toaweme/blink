@@ -26,17 +26,21 @@ var ErrCanceled = errors.New("canceled")
 // returns the selected (and possibly edited or probed) services.
 //
 // detectFn, when non-nil, enables the re-detect key (`d`) and is called to fetch
-// fresh services to merge by name. probeFn, when non-nil, enables the port-
-// discovery key (`p`): it probes every selected service concurrently, animating
-// a spinner per row, and fills in the ports each bound. Probes outlive a trip
-// into the editor (owned by a manager that spans picker re-runs), so going in
-// and back doesn't restart them.
-func PickServices(title string, services []config.Service, detectFn func() ([]config.Service, error), probeFn func(config.Service) ([]config.Port, error)) ([]config.Service, error) {
+// fresh services to merge by name. scanPathFn, when non-nil, enables the add-
+// from-path key (`f`): it scans a directory the user types (absolute or relative
+// to the project root) and returns its services, already rebased to run from
+// there, so a single config can supervise sibling repos. probeFn, when non-nil,
+// enables the port-discovery key (`p`): it probes every selected service
+// concurrently, animating a spinner per row, and fills in the ports each bound.
+// Probes outlive a trip into the editor (owned by a manager that spans picker
+// re-runs), so going in and back doesn't restart them.
+func PickServices(title string, services []config.Service, detectFn func() ([]config.Service, error), scanPathFn func(string) ([]config.Service, error), probeFn func(config.Service) ([]config.Port, error)) ([]config.Service, error) {
 	items := make([]pickItem, 0, len(services))
 	for _, s := range services {
 		items = append(items, pickItem{svc: s, keep: true})
 	}
 	cursor := 0
+	notice := ""
 
 	var probes *probeManager
 	if probeFn != nil {
@@ -45,6 +49,8 @@ func PickServices(title string, services []config.Service, detectFn func() ([]co
 
 	for {
 		p := buildPicker(title, items, cursor, detectFn != nil, probes)
+		p.allowAddPath = scanPathFn != nil
+		p.notice = notice
 		out, err := tea.NewProgram(p, tea.WithAltScreen()).Run()
 		if err != nil {
 			return nil, fmt.Errorf("failed to run service picker: %w", err)
@@ -55,6 +61,9 @@ func PickServices(title string, services []config.Service, detectFn func() ([]co
 		}
 		items = fp.items
 		cursor = clamp(fp.cursor, 0, len(items)-1)
+		// the notice was shown in the frame just rendered; clear it unless an
+		// action below re-sets it for the next pass.
+		notice = ""
 
 		switch fp.result {
 		case resCancel:
@@ -97,6 +106,35 @@ func PickServices(title string, services []config.Service, detectFn func() ([]co
 					have[s.Name] = true
 				}
 			}
+
+		case resAddPath:
+			path, canceled, perr := promptScanPath()
+			if perr != nil {
+				return nil, perr
+			}
+			path = strings.TrimSpace(path)
+			if canceled || path == "" {
+				continue
+			}
+			found, serr := scanPathFn(path)
+			if serr != nil {
+				notice = serr.Error()
+				continue
+			}
+			taken := nameSet(items, -1)
+			added := 0
+			for _, s := range found {
+				s.Name = uniqueName(s.Name, taken)
+				taken[s.Name] = true
+				items = append(items, pickItem{svc: s, keep: true})
+				added++
+			}
+			if added == 0 {
+				notice = "no services found in " + path
+				continue
+			}
+			notice = fmt.Sprintf("added %d service(s) from %s", added, path)
+			cursor = len(items) - 1
 		}
 	}
 }
@@ -125,6 +163,7 @@ const (
 	resDone
 	resEdit
 	resAdd
+	resAddPath
 	resDetect
 )
 
@@ -217,16 +256,18 @@ func (pm *probeManager) snapshot() (map[string]bool, map[string]probeOutcome) {
 // edit/add/detect quit and are handled by the outer PickServices loop, which
 // re-runs a fresh picker.
 type picker struct {
-	title       string
-	items       []pickItem
-	cursor      int
-	result      pickResult
-	editIdx     int
-	width       int
-	allowDetect bool
-	probes      *probeManager
-	spinner     spinner.Model
-	ticking     bool
+	title        string
+	items        []pickItem
+	cursor       int
+	result       pickResult
+	editIdx      int
+	width        int
+	allowDetect  bool
+	allowAddPath bool
+	notice       string
+	probes       *probeManager
+	spinner      spinner.Model
+	ticking      bool
 }
 
 var _ tea.Model = picker{}
@@ -308,6 +349,11 @@ func (m picker) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "a":
 		m.result = resAdd
 		return m, tea.Quit
+	case "f":
+		if m.allowAddPath {
+			m.result = resAddPath
+			return m, tea.Quit
+		}
 	case "d":
 		if m.allowDetect {
 			m.result = resDetect
@@ -387,7 +433,11 @@ func (m picker) View() string {
 	}
 	b.WriteString(titleStyle.Render(m.title))
 	b.WriteString(dim.Render(fmt.Sprintf("   selected %d/%d services", selected, len(m.items))))
-	b.WriteString("\n\n")
+	b.WriteString("\n")
+	if m.notice != "" {
+		b.WriteString(lipgloss.NewStyle().Foreground(envColor).Render(m.notice) + "\n")
+	}
+	b.WriteString("\n")
 
 	if len(m.items) == 0 {
 		b.WriteString(dim.Render("  no services - press a to add one\n"))
@@ -437,7 +487,7 @@ func (m picker) renderRow(i int, it pickItem, nameW, cmdW int) string {
 
 	rt := dim.Render(padRight(runtimeLabel(it.svc.Runtime), rtWidth))
 
-	cmd := lipgloss.NewStyle().Foreground(faintColor).Render(padRight(truncate(serviceCommand(it.svc), cmdW), cmdW))
+	cmd := lipgloss.NewStyle().Foreground(faintColor).Render(padRight(truncate(rowCommand(it.svc), cmdW), cmdW))
 
 	return fmt.Sprintf("%s%s %s%s%s%s%s%s%s",
 		arrow, box,
@@ -477,6 +527,9 @@ func (m picker) renderHints() string {
 		key.Render("→") + dim.Render(" edit"),
 		key.Render("a") + dim.Render(" add"),
 	}
+	if m.allowAddPath {
+		hints = append(hints, key.Render("f")+dim.Render(" add path"))
+	}
 	if m.allowDetect {
 		hints = append(hints, key.Render("d")+dim.Render(" re-detect"))
 	}
@@ -508,7 +561,7 @@ func (m picker) nameWidth() int {
 func (m picker) commandWidth(nameW int) int {
 	w := len("COMMAND")
 	for _, it := range m.items {
-		if l := utf8.RuneCountInString(serviceCommand(it.svc)); l > w {
+		if l := utf8.RuneCountInString(rowCommand(it.svc)); l > w {
 			w = l
 		}
 	}
@@ -523,6 +576,17 @@ func (m picker) commandWidth(nameW int) int {
 		}
 	}
 	return w
+}
+
+// rowCommand is the COMMAND-column text: the synthesized invocation, prefixed
+// with the working directory when the service runs outside the project root, so
+// same-named services pulled from different repos stay distinguishable.
+func rowCommand(svc config.Service) string {
+	cmd := serviceCommand(svc)
+	if d := svc.Dir; d != "" && d != "." {
+		return d + " · " + cmd
+	}
+	return cmd
 }
 
 // runtimeLabel normalizes the empty runtime to its effective default.
