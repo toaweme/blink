@@ -1,7 +1,0 @@
-services:
-    - name: blink
-      runtime: go
-      go:
-        package: ./cmd/blink
-      reload:
-        reload: true
