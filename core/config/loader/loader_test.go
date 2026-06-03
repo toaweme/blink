@@ -75,9 +75,11 @@ func Test_Discover_FindsConfigInDir(t *testing.T) {
 }
 
 func Test_Discover_PrefersConfigNamesInOrder(t *testing.T) {
-	// the canonical priority order: visible before hidden, .yml before .yaml.
-	// blink.yml (first) is what `blink init` writes.
-	order := []string{"blink.yml", "blink.yaml", ".blink.yml", ".blink.yaml"}
+	// the canonical priority order: yml/yaml before toml before json. blink.yml
+	// (first) is what `blink init` writes. Every name holds the same yaml bytes
+	// here; this test only asserts discovery order, not decoding (see
+	// Test_Load_DecodesByExtension for that).
+	order := []string{"blink.yml", "blink.yaml", "blink.toml", "blink.json"}
 
 	// walk the priority list, each case dropping the previous winner so the next
 	// name in sequence must take over.
@@ -112,6 +114,31 @@ func Test_Discover_ReturnsNotExistWhenMissing(t *testing.T) {
 
 	_, err := Discover(dir)
 	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func Test_Load_DecodesByExtension(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+	}{
+		{"blink.yaml", "services:\n  - name: api\n"},
+		{"blink.json", `{"services":[{"name":"api"}]}`},
+		{"blink.toml", "[[services]]\nname = \"api\"\n"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, tc.name)
+			require.NoError(t, os.WriteFile(path, []byte(tc.data), 0o644))
+
+			cfg, abs, err := Load(dir, "")
+			require.NoError(t, err)
+			assert.Equal(t, path, abs)
+			require.Len(t, cfg.Services, 1)
+			assert.Equal(t, "api", cfg.Services[0].Name)
+		})
+	}
 }
 
 func Test_Load_ResolvesDirRootRelativeToConfig(t *testing.T) {

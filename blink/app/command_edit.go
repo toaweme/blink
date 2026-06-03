@@ -18,7 +18,7 @@ import (
 
 // EditConfig holds the flags the edit command accepts.
 type EditConfig struct {
-	Config string `arg:"config" short:"c" env:"BLINK_CONFIG" help:"Path to blink.yaml. Walks up from cwd when empty."`
+	Config string `arg:"config" short:"c" env:"BLINK_CONFIG" help:"Path to the blink config (yml/yaml/toml/json). Walks up from cwd when empty."`
 }
 
 // EditCommand interactively edits an existing blink.yaml.

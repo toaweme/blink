@@ -6,7 +6,32 @@ import (
 	"testing"
 
 	"github.com/toaweme/blink/core/config"
+	"github.com/toaweme/blink/core/config/loader"
 )
+
+// Test_WriteConfig_FormatFollowsExtension verifies init/edit pick the on-disk
+// format from the output path's extension and that the loader reads each back.
+func Test_WriteConfig_FormatFollowsExtension(t *testing.T) {
+	for _, name := range []string{"blink.yml", "blink.yaml", "blink.toml", "blink.json"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, name)
+			cfg := config.Config{Services: []config.Service{{Name: "api", Runtime: "go"}}}
+
+			if err := writeConfig(path, cfg); err != nil {
+				t.Fatalf("writeConfig: %v", err)
+			}
+
+			got, _, err := loader.Load(dir, path)
+			if err != nil {
+				t.Fatalf("loader.Load: %v", err)
+			}
+			if len(got.Services) != 1 || got.Services[0].Name != "api" {
+				t.Fatalf("round-trip mismatch: got %+v", got.Services)
+			}
+		})
+	}
+}
 
 // Test_ScanServices_DetectsAndSniffsPorts covers the init entry path: a Go
 // module with a main package is detected, and the port written in a sibling

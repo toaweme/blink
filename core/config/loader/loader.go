@@ -7,17 +7,17 @@ import (
 	"os"
 	"path/filepath"
 
-	"gopkg.in/yaml.v3"
-
 	clicfg "github.com/toaweme/cli/config"
 
 	"github.com/toaweme/blink/core/config"
+	"github.com/toaweme/blink/core/config/format"
 )
 
 // configNames are searched in order when discovering a config from cwd upwards.
 // blink.yml is canonical (what `blink init` writes); the rest are accepted
-// fallbacks: visible before hidden, .yml before .yaml.
-var configNames = []string{"blink.yml", "blink.yaml", ".blink.yml", ".blink.yaml"}
+// fallbacks ordered yml/yaml before toml before json. Each name is decoded by
+// the codec its extension implies (see format.CodecForPath).
+var configNames = []string{"blink.yml", "blink.yaml", "blink.toml", "blink.json"}
 
 // Load returns the parsed config and the absolute path it was read from.
 //
@@ -44,8 +44,13 @@ func Load(start, explicit string) (config.Config, string, error) {
 		return config.Config{}, "", fmt.Errorf("failed to read %s: %w", abs, err)
 	}
 
+	codec, err := format.CodecForPath(abs)
+	if err != nil {
+		return config.Config{}, "", fmt.Errorf("failed to select codec for %s: %w", abs, err)
+	}
+
 	var cfg config.Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := codec.Unmarshal(data, &cfg); err != nil {
 		return config.Config{}, "", fmt.Errorf("failed to parse %s: %w", abs, err)
 	}
 
@@ -70,7 +75,7 @@ func Load(start, explicit string) (config.Config, string, error) {
 func Discover(start string) (string, error) {
 	path := clicfg.Discover(start, configNames)
 	if path == "" {
-		return "", fmt.Errorf("no blink.yaml found from %s: %w", start, os.ErrNotExist)
+		return "", fmt.Errorf("no blink config (yml/yaml/toml/json) found from %s: %w", start, os.ErrNotExist)
 	}
 	return path, nil
 }

@@ -19,8 +19,8 @@ import (
 
 // InitConfig holds the flags the init command accepts.
 type InitConfig struct {
-	Path  string `arg:"path"  short:"p" env:"BLINK_INIT_PATH"  default:"blink.yml" help:"Output path."`
-	Force bool   `arg:"force" short:"f" env:"BLINK_INIT_FORCE"                     help:"Overwrite an existing file."`
+	Config string `arg:"config" short:"c" env:"BLINK_CONFIG"      default:"blink.yml" help:"Config file to create; extension picks the format (.yml/.yaml, .toml, .json)."`
+	Force  bool   `arg:"force"  short:"f" env:"BLINK_INIT_FORCE"                      help:"Overwrite an existing file."`
 }
 
 // InitCommand scans the project and interactively creates a new blink.yml.
@@ -40,7 +40,7 @@ func NewInitCommand(reg *addon.Registry) *InitCommand {
 // Run scans the project, runs the interactive picker, and writes the selected
 // services to a new blink.yml.
 func (c *InitCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
-	target := c.Inputs.Path
+	target := c.Inputs.Config
 	if !filepath.IsAbs(target) {
 		target = filepath.Join(options.Cwd, target)
 	}
@@ -204,11 +204,18 @@ func coversAll(subset, full []string) bool {
 	return true
 }
 
-// writeConfig serializes cfg to path as YAML via the shared format writer so
-// init and edit produce identical output.
+// writeConfig serializes cfg via the shared format writer so init and edit
+// produce identical output. The format is chosen from the path's extension
+// (.yml/.yaml, .toml, .json), so callers pick a format by naming the file;
+// init defaults to blink.yml and edit reuses the loaded file's extension. An
+// unrecognized or missing extension falls back to YAML.
 func writeConfig(path string, cfg config.Config) error {
 	cfg.Runtime = config.RuntimeOptions{}
-	if err := format.NewWriter(path).Write(cfg, format.FormatYAML); err != nil {
+	f, err := format.FormatForPath(path)
+	if err != nil {
+		f = format.FormatYAML
+	}
+	if err := format.NewWriter(path).Write(cfg, f); err != nil {
 		return fmt.Errorf("failed to write %q: %w", path, err)
 	}
 	return nil
