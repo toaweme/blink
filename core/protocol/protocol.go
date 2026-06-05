@@ -56,6 +56,10 @@ type StatusEvent struct {
 	Status  string    `json:"status"`
 	Err     string    `json:"err,omitempty"`
 	At      time.Time `json:"at"`
+	// Ports are the local TCP ports the service was observed to listen on,
+	// reported on a service-level event (Child == "") by runtimes that discover
+	// ports at startup (e.g. docker compose published ports). Empty otherwise.
+	Ports []int `json:"ports,omitempty"`
 }
 
 // LogLine is a single line of captured output from a service or managed child.

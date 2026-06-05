@@ -100,10 +100,11 @@ type Model struct {
 	// "restarting"/"building" to "running" cycle.
 	reloads map[string]int
 
-	// urls[svc] is the local URL a service listens on (e.g.
-	// "http://127.0.0.1:8080"), resolved from its probed/configured ports.
-	// Shown in the footer left of the uptime. Absent for services with no port.
-	urls map[string]string
+	// ports[svc] is the set of local TCP ports a service listens on. Seeded from
+	// the probed/configured ports and, for runtime-managed services (docker),
+	// updated from the published ports a StatusMsg carries once the stack is up.
+	// Rendered as a "http://127.0.0.1:<port>, ..." address left of the uptime.
+	ports map[string][]int
 
 	// watchFiles, watchDirs and watchPerSvc are the latest counts published by
 	// the supervisor via WatchStatsMsg. Zero before the first message.
@@ -423,6 +424,19 @@ func (m *Model) handleLineMsg(msg LineMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleStatusMsg(msg StatusMsg) (tea.Model, tea.Cmd) {
+	// ports are keyed like buffers: the bare service for the merged/service-level
+	// view, the service+container composite for a focused container. A per-child
+	// event carries that one container's ports so the focused view shows only it.
+	if len(msg.Ports) > 0 {
+		if m.ports == nil {
+			m.ports = map[string][]int{}
+		}
+		key := msg.Service
+		if msg.Child != "" {
+			key = msg.Service + childSep + msg.Child
+		}
+		m.ports[key] = msg.Ports
+	}
 	if msg.Child == "" {
 		prev := m.statuses[msg.Service]
 		m.statuses[msg.Service] = msg.Status
@@ -783,6 +797,11 @@ func (m *Model) restoreScroll() {
 	m.watchHintAt = time.Now()
 	if !m.ready {
 		return
+	}
+	// in cursor mode every tab carries a visible cursor, so seed one for the
+	// now-active tab before rendering instead of waiting for the first ↑/↓.
+	if m.cursorMode {
+		m.ensureCursor()
 	}
 	// rerender the now-active tab before repositioning.
 	content, mapping := m.renderBufferMapped(m.buffers[m.viewKey()])
@@ -1198,7 +1217,9 @@ func (m *Model) renderRightFooter(dim, val, accent lipgloss.Style) string {
 	tab := m.activeTab()
 	if tab != allTab {
 		var parts []string
-		if u := m.urls[tab]; u != "" {
+		// while a container is focused, show that container's ports; the merged
+		// view falls back to the service-level (aggregate) ports.
+		if u := formatPortsURL(m.ports[m.viewKey()]); u != "" {
 			parts = append(parts, url.Render(u))
 		}
 		if t, ok := m.startedAt[tab]; ok {
@@ -1232,6 +1253,20 @@ func (m *Model) renderRightFooter(dim, val, accent lipgloss.Style) string {
 		parts = append(parts, dim.Render("⟳ ")+val.Render(strconv.Itoa(total)))
 	}
 	return strings.Join(parts, dim.Render(" · "))
+}
+
+// formatPortsURL renders a service's listening ports as a loopback address:
+// "http://127.0.0.1:8080" for one, "http://127.0.0.1:8080, 8081" for several.
+// Empty for a service with no known port.
+func formatPortsURL(ports []int) string {
+	if len(ports) == 0 {
+		return ""
+	}
+	nums := make([]string, len(ports))
+	for i, p := range ports {
+		nums[i] = strconv.Itoa(p)
+	}
+	return "http://127.0.0.1:" + strings.Join(nums, ", ")
 }
 
 // formatUptime renders a duration compactly (12s, 2m13s, 1h04m, 3d02h), trimmed

@@ -15,6 +15,10 @@ type StatusMsg struct {
 	Child   string
 	Status  string
 	Err     error
+	// Ports are the local TCP ports the service was observed to listen on,
+	// carried on a service-level event (Child == "") by runtimes that discover
+	// ports at startup (e.g. docker compose published ports). Empty otherwise.
+	Ports []int
 }
 
 // WatchStatsMsg carries file and directory counts, both aggregate and

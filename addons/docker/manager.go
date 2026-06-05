@@ -132,7 +132,13 @@ func (m *Manager) Start(ctx context.Context) error {
 		go m.runLogStream(streamCtx, name) //nolint:contextcheck // streamer lifecycle is owned by Stop, not the Start request ctx
 	}
 
-	m.emit(addon.ManagerEvent{Status: "running"})
+	// surface the host-reachable published ports with the running event so the UI
+	// can show the stack's address. Best-effort: a ps failure just omits them.
+	var ports []int
+	if rows, err := m.composeRows(ctx); err == nil {
+		ports = collectPorts(rows, m.services)
+	}
+	m.emit(addon.ManagerEvent{Status: "running", Ports: ports})
 	m.started = true
 	return nil
 }

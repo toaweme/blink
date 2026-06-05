@@ -48,7 +48,7 @@ func (b *Blink) Run(cfg config.Config) error {
 	model := tui.NewModel(sup.Order(), controllerAdapter{sup: sup}).
 		WithKeymap(km).
 		WithZen(cfg.Zen).
-		WithServiceURLs(serviceURLs(cfg)).
+		WithServicePorts(servicePorts(cfg)).
 		WithLogControl(cfg.Paths.LogDir, sink.Enabled(), sink.Toggle)
 	app := tui.NewApp(model)
 
@@ -120,6 +120,7 @@ func forwardEvents(app *tui.App, sub output.Subscription) {
 			Child:   ev.Child,
 			Status:  ev.Status,
 			Err:     err,
+			Ports:   ev.Ports,
 		})
 	}
 }
@@ -163,21 +164,20 @@ func pollWatchStats(ctx context.Context, app *tui.App, sup *supervisor.Superviso
 	}
 }
 
-// serviceURLs maps each service that binds a known port to a local URL, keyed
-// by service name. Ports come from the service's probed/configured Ports,
-// resolved against its env (env-referenced ports fall back to the process
-// environment, where .env was loaded). The first resolvable port wins; a
-// service with none is omitted, so the footer shows nothing for it.
-func serviceURLs(cfg config.Config) map[string]string {
-	urls := make(map[string]string, len(cfg.Services))
+// servicePorts maps each service to the local TCP ports it binds, keyed by
+// service name. Ports come from the service's probed/configured Ports, resolved
+// against its env (env-referenced ports fall back to the process environment,
+// where .env was loaded). Docker services declare no Ports here; their published
+// ports are discovered at runtime and reach the TUI on a status event instead.
+// A service with no resolvable port is omitted, so the footer shows nothing.
+func servicePorts(cfg config.Config) map[string][]int {
+	out := make(map[string][]int, len(cfg.Services))
 	for _, svc := range cfg.Services {
-		ports := config.ResolvePorts(svc.Ports, svc.Env)
-		if len(ports) == 0 {
-			continue
+		if ports := config.ResolvePorts(svc.Ports, svc.Env); len(ports) > 0 {
+			out[svc.Name] = ports
 		}
-		urls[svc.Name] = fmt.Sprintf("http://127.0.0.1:%d", ports[0])
 	}
-	return urls
+	return out
 }
 
 // stringError turns a protocol-wire error string back into an error so the

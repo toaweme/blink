@@ -45,6 +45,38 @@ func (m *Manager) waitForPublishedPorts(ctx context.Context) error {
 	return nil
 }
 
+// collectPorts returns the published host TCP ports of the stack, in first-seen order and deduped. A non-empty serviceFilter limits it to services in that set. These are the ports reachable on the host, surfaced to the UI as the stack's address.
+func collectPorts(rows []composePsRow, serviceFilter []string) []int {
+	want := make(map[string]struct{}, len(serviceFilter))
+	for _, s := range serviceFilter {
+		want[s] = struct{}{}
+	}
+
+	seen := make(map[int]struct{})
+	var ports []int
+	for _, row := range rows {
+		if len(want) > 0 {
+			if _, ok := want[row.Service]; !ok {
+				continue
+			}
+		}
+		for _, pub := range row.Publishers {
+			if pub.PublishedPort == 0 {
+				continue
+			}
+			if pub.Protocol != "" && pub.Protocol != "tcp" {
+				continue
+			}
+			if _, dup := seen[pub.PublishedPort]; dup {
+				continue
+			}
+			seen[pub.PublishedPort] = struct{}{}
+			ports = append(ports, pub.PublishedPort)
+		}
+	}
+	return ports
+}
+
 // collectAddrs returns the host:port list to probe. A non-empty serviceFilter limits it to services in that set.
 func collectAddrs(rows []composePsRow, serviceFilter []string) []string {
 	want := make(map[string]struct{}, len(serviceFilter))

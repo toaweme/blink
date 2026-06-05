@@ -57,7 +57,13 @@ func (m *Manager) seedStatus(ctx context.Context) error {
 		return err
 	}
 	for _, row := range rows {
-		m.emit(addon.ManagerEvent{Child: row.Service, Status: normaliseState(row.State, row.Health)})
+		// attach this container's own published ports so a focused container tab
+		// shows just its address, not the whole stack's.
+		m.emit(addon.ManagerEvent{
+			Child:  row.Service,
+			Status: normaliseState(row.State, row.Health),
+			Ports:  collectPorts([]composePsRow{row}, nil),
+		})
 	}
 	return nil
 }

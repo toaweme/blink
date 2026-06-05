@@ -40,12 +40,13 @@ func (m *Model) WithLogControl(logDir string, on bool, toggle func() bool) *Mode
 	return m
 }
 
-// WithServiceURLs records the local URL each service listens on, keyed by
-// service name (e.g. "web" -> "http://127.0.0.1:8080"). The footer shows it on
-// that service's tab, left of the uptime. Services absent from the map (no
-// known port) show no URL.
-func (m *Model) WithServiceURLs(urls map[string]string) *Model {
-	m.urls = urls
+// WithServicePorts seeds the local TCP ports each service listens on, keyed by
+// service name (e.g. "web" -> {8080}). The footer renders them as an address on
+// that service's tab, left of the uptime. Runtime-managed services (docker)
+// whose ports are only known once the stack is up are filled in later from
+// their status events; services with no known port show no address.
+func (m *Model) WithServicePorts(ports map[string][]int) *Model {
+	m.ports = ports
 	return m
 }
 

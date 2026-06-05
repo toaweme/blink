@@ -57,6 +57,10 @@ type ManagerEvent struct {
 	Child  string
 	Status string // matches supervisor.Status values: running, exited, crashed, ...
 	Err    error
+	// Ports are the local TCP ports the service listens on, reported on a
+	// service-level event (Child == "") by runtimes that discover them at
+	// startup (e.g. docker compose published ports). Empty otherwise.
+	Ports []int
 }
 
 // LogLine is a single line of captured output from a managed child process.

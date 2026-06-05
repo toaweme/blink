@@ -407,7 +407,7 @@ func (s *Supervisor) forwardManagerEvents(st *serviceState) {
 			if !ok {
 				return
 			}
-			s.publishStatus(st.svc.Name, ev.Child, Status(ev.Status), ev.Err)
+			s.publishStatus(st.svc.Name, ev.Child, Status(ev.Status), ev.Err, ev.Ports...)
 		}
 	}
 }
@@ -656,12 +656,13 @@ func (s *Supervisor) setStatusErr(st *serviceState, status Status, err error) {
 // publishStatus translates a supervisor-local status update into a
 // protocol.StatusEvent and pushes it through the Hub. All status emission
 // (service, managed child, restart marker) goes here.
-func (s *Supervisor) publishStatus(service, child string, status Status, err error) {
+func (s *Supervisor) publishStatus(service, child string, status Status, err error, ports ...int) {
 	ev := protocol.StatusEvent{
 		Service: service,
 		Child:   child,
 		Status:  string(status),
 		At:      time.Now(),
+		Ports:   ports,
 	}
 	if err != nil {
 		ev.Err = err.Error()
