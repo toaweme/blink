@@ -18,7 +18,6 @@ type Runtime interface {
 	// service at supervisor startup.
 	Prepare(cfg config.Config, svc config.Service) (Plan, error)
 }
-
 // Plan is the output of Runtime.Prepare. All fields are optional.
 type Plan struct {
 	// Defaults overlays missing fields on the user's Service. See MergeService.

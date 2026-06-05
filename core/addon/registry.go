@@ -9,31 +9,25 @@ import (
 )
 
 // Registry is the single place every addon the binary ships is wired in:
-// runtimes, lifecycle hooks, and the client/host halves of remote transports.
-// The CLI's main builds one and registers explicitly: no init() side-effects,
-// no blank imports. blink-mini registers only runtimes and hooks, keeping the
-// transport addons out of its import graph.
+// runtimes and lifecycle hooks. The CLI's main builds one and registers
+// explicitly: no init() side-effects, no blank imports.
 //
-// A nil *Registry is invalid for runtime/transport lookups, but the hook
-// dispatch helpers (DispatchHooks, HasHooks) tolerate it as no-ops so the
-// supervisor can hold a registry that has no hooks.
+// A nil *Registry is invalid for runtime lookups, but the hook dispatch helpers
+// (DispatchHooks, HasHooks) tolerate it as no-ops so the supervisor can hold a
+// registry that has no hooks.
 type Registry struct {
-	mu          sync.RWMutex
-	runtimes    map[string]Runtime
-	hooks       map[Phase][]ServiceHook
-	hookNames   map[string]struct{}
-	discoveries map[string]Discovery
-	listeners   map[string]ListenerFactory
+	mu        sync.RWMutex
+	runtimes  map[string]Runtime
+	hooks     map[Phase][]ServiceHook
+	hookNames map[string]struct{}
 }
 
 // NewRegistry returns an empty registry ready for the Add* calls.
 func NewRegistry() *Registry {
 	return &Registry{
-		runtimes:    make(map[string]Runtime),
-		hooks:       make(map[Phase][]ServiceHook),
-		hookNames:   make(map[string]struct{}),
-		discoveries: make(map[string]Discovery),
-		listeners:   make(map[string]ListenerFactory),
+		runtimes:  make(map[string]Runtime),
+		hooks:     make(map[Phase][]ServiceHook),
+		hookNames: make(map[string]struct{}),
 	}
 }
 
@@ -108,48 +102,4 @@ func (r *Registry) DispatchHooks(ctx context.Context, phase Phase, cfg config.Co
 			errFn(h.Name(), err)
 		}
 	}
-}
-
-// AddTransportDiscovery registers client-side transport discoveries under
-// their Name(). Panics on duplicate.
-func (r *Registry) AddTransportDiscovery(ds ...Discovery) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, d := range ds {
-		name := d.Name()
-		if _, dup := r.discoveries[name]; dup {
-			panic(fmt.Sprintf("transport discovery %q already registered", name))
-		}
-		r.discoveries[name] = d
-	}
-}
-
-// Discovery returns the discovery registered under name.
-func (r *Registry) Discovery(name string) (Discovery, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	d, ok := r.discoveries[name]
-	return d, ok
-}
-
-// AddTransportListener registers host-side listener factories under their
-// Name(). Panics on duplicate.
-func (r *Registry) AddTransportListener(ls ...ListenerFactory) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, l := range ls {
-		name := l.Name()
-		if _, dup := r.listeners[name]; dup {
-			panic(fmt.Sprintf("transport listener %q already registered", name))
-		}
-		r.listeners[name] = l
-	}
-}
-
-// Listener returns the listener factory registered under name.
-func (r *Registry) Listener(name string) (ListenerFactory, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	l, ok := r.listeners[name]
-	return l, ok
 }

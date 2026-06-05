@@ -1,27 +1,15 @@
+// Package control owns the TUI's bindable action catalog and keymap: the stable
+// action identifiers a key can bind to, the default key bindings, and the
+// blink.yaml control.keys override path. It is the contract between a keypress
+// and the supervisor side effect the model dispatches.
 package control
 
-// Scope separates the two kinds of action the TUI can bind a key to.
-type Scope int
-
-const (
-	// ScopeSession actions act on the supervised services. They are role-gated
-	// and wire-encodable, dispatching identically from the local TUI or a remote
-	// mirror, and reuse the wire Verb strings.
-	ScopeSession Scope = iota
-	// ScopeView actions are consumer-local presentation concerns (scroll, switch
-	// tab, toggle zen, quit) and never cross the wire.
-	ScopeView
-)
-
-// Action is the stable identifier a key binds to. Session actions reuse the
-// wire Verb* strings so a binding and a command share one name.
+// Action is the stable identifier a key binds to.
 type Action string
 
 const (
-	// ActionRestart restarts the focused service. Only key-bound actions live
-	// here; other verbs (list, signal, send, dump-logs, resync) are issued over
-	// the wire directly and have no keybinding.
-	ActionRestart = Action(VerbRestart)
+	// ActionRestart restarts the focused service.
+	ActionRestart Action = "restart"
 	// ActionRestartAll restarts every service.
 	ActionRestartAll Action = "restart-all"
 	// ActionInsertBlank publishes a blank line into the focused service's output
@@ -79,13 +67,10 @@ const (
 	ActionAppendSelection Action = "append-selection"
 )
 
-// Spec describes one action: its scope, the minimum role to dispatch it
-// (session actions only), and a one-line help string. The catalog is the single
-// source of truth a Keymap validates against.
+// Spec describes one action: its identifier and a one-line help string. The
+// catalog is the single source of truth a Keymap validates against.
 type Spec struct {
 	Action Action
-	Scope  Scope
-	Role   Role
 	Help   string
 }
 
@@ -94,31 +79,31 @@ type Spec struct {
 // Keymap.Merge.
 func Actions() []Spec {
 	return []Spec{
-		{ActionRestart, ScopeSession, RoleOperator, "restart the focused service"},
-		{ActionRestartAll, ScopeSession, RoleOperator, "restart all services"},
-		{ActionInsertBlank, ScopeSession, RoleOperator, "insert a blank line into the focused service's output"},
-		{ActionNextTab, ScopeView, RoleViewer, "next tab"},
-		{ActionPrevTab, ScopeView, RoleViewer, "previous tab"},
-		{ActionNextChild, ScopeView, RoleViewer, "focus the next container (docker tab)"},
-		{ActionPrevChild, ScopeView, RoleViewer, "focus the previous container (docker tab)"},
-		{ActionHistBack, ScopeView, RoleViewer, "back to the previously viewed tab"},
-		{ActionHistForward, ScopeView, RoleViewer, "forward in tab history"},
-		{ActionClear, ScopeView, RoleViewer, "clear the focused tab buffer"},
-		{ActionClearAll, ScopeView, RoleViewer, "clear all buffers"},
-		{ActionCursorMode, ScopeView, RoleViewer, "toggle line-export mode"},
-		{ActionCursorUp, ScopeView, RoleViewer, "scroll up (cursor up in cursor mode)"},
-		{ActionCursorDown, ScopeView, RoleViewer, "scroll down (cursor down in cursor mode)"},
-		{ActionExtendUp, ScopeView, RoleViewer, "extend selection up"},
-		{ActionExtendDown, ScopeView, RoleViewer, "extend selection down"},
-		{ActionToggleSelect, ScopeView, RoleViewer, "toggle the cursor line in the selection"},
-		{ActionCopy, ScopeView, RoleViewer, "copy selection (or cursor line) to the clipboard"},
-		{ActionClearCursor, ScopeView, RoleViewer, "clear selection / exit cursor mode"},
-		{ActionWriteSelection, ScopeView, RoleViewer, "rewrite <svc>.selected.log with the selection"},
-		{ActionAppendSelection, ScopeView, RoleViewer, "append the selection to <svc>.selected.log"},
-		{ActionToggleLogs, ScopeView, RoleViewer, "toggle log-file writing"},
-		{ActionCommandCenter, ScopeView, RoleViewer, "open the action center"},
-		{ActionToggleZen, ScopeView, RoleViewer, "toggle zen mode"},
-		{ActionQuit, ScopeView, RoleViewer, "quit"},
+		{ActionRestart, "restart the focused service"},
+		{ActionRestartAll, "restart all services"},
+		{ActionInsertBlank, "insert a blank line into the focused service's output"},
+		{ActionNextTab, "next tab"},
+		{ActionPrevTab, "previous tab"},
+		{ActionNextChild, "focus the next container (docker tab)"},
+		{ActionPrevChild, "focus the previous container (docker tab)"},
+		{ActionHistBack, "back to the previously viewed tab"},
+		{ActionHistForward, "forward in tab history"},
+		{ActionClear, "clear the focused tab buffer"},
+		{ActionClearAll, "clear all buffers"},
+		{ActionCursorMode, "toggle line-export mode"},
+		{ActionCursorUp, "scroll up (cursor up in cursor mode)"},
+		{ActionCursorDown, "scroll down (cursor down in cursor mode)"},
+		{ActionExtendUp, "extend selection up"},
+		{ActionExtendDown, "extend selection down"},
+		{ActionToggleSelect, "toggle the cursor line in the selection"},
+		{ActionCopy, "copy selection (or cursor line) to the clipboard"},
+		{ActionClearCursor, "clear selection / exit cursor mode"},
+		{ActionWriteSelection, "rewrite <svc>.selected.log with the selection"},
+		{ActionAppendSelection, "append the selection to <svc>.selected.log"},
+		{ActionToggleLogs, "toggle log-file writing"},
+		{ActionCommandCenter, "open the action center"},
+		{ActionToggleZen, "toggle zen mode"},
+		{ActionQuit, "quit"},
 	}
 }
 

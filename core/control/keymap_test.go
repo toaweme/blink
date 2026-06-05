@@ -75,15 +75,15 @@ func Test_DefaultKeymap_BindingsInCatalog(t *testing.T) {
 	}
 }
 
-func Test_Actions_ScopeAndRole(t *testing.T) {
+func Test_Actions_CatalogHasHelp(t *testing.T) {
 	specs := actionSpecs()
-	if specs[ActionRestart].Scope != ScopeSession {
-		t.Fatalf("restart should be a session action")
+	if _, ok := specs[ActionRestart]; !ok {
+		t.Fatalf("restart should be in the action catalog")
 	}
-	if specs[ActionRestart].Role != RoleOperator {
-		t.Fatalf("restart should require operator role")
+	if specs[ActionRestart].Help == "" {
+		t.Fatalf("restart should have a help string")
 	}
-	if specs[ActionToggleZen].Scope != ScopeView {
-		t.Fatalf("toggle-zen should be a view action")
+	if specs[ActionToggleZen].Help == "" {
+		t.Fatalf("toggle-zen should have a help string")
 	}
 }

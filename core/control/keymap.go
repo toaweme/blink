@@ -81,7 +81,6 @@ func (k Keymap) Merge(overrides map[string]string) (Keymap, error) {
 type HelpEntry struct {
 	Action Action
 	Keys   []string
-	Scope  Scope
 	Help   string
 }
 
@@ -102,7 +101,7 @@ func (k Keymap) Help() []HelpEntry {
 		if !ok {
 			continue
 		}
-		out = append(out, HelpEntry{Action: spec.Action, Keys: keys, Scope: spec.Scope, Help: spec.Help})
+		out = append(out, HelpEntry{Action: spec.Action, Keys: keys, Help: spec.Help})
 	}
 	return out
 }
