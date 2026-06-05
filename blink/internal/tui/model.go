@@ -100,6 +100,11 @@ type Model struct {
 	// "restarting"/"building" to "running" cycle.
 	reloads map[string]int
 
+	// urls[svc] is the local URL a service listens on (e.g.
+	// "http://127.0.0.1:8080"), resolved from its probed/configured ports.
+	// Shown in the footer left of the uptime. Absent for services with no port.
+	urls map[string]string
+
 	// watchFiles, watchDirs and watchPerSvc are the latest counts published by
 	// the supervisor via WatchStatsMsg. Zero before the first message.
 	watchFiles  int
@@ -1106,7 +1111,7 @@ func (m *Model) renderContainerNav(dim, val lipgloss.Style) string {
 	focus := m.childFocus[m.activeTab()]
 	label, idx := "all", 0
 	if focus != "" {
-		label = focus
+		label = stripTabPrefix(focus, m.activeTab())
 		for i, c := range children {
 			if c == focus {
 				idx = i + 1
@@ -1115,8 +1120,40 @@ func (m *Model) renderContainerNav(dim, val lipgloss.Style) string {
 		}
 	}
 	key := m.keyFor(control.ActionNextChild)
-	return val.Render(key) + dim.Render(" ") + val.Render(label) +
+	// fixed-width label so the i/n counter keeps its column as containers change.
+	return val.Render(key) + dim.Render(" ") + val.Render(fitLabel(label, containerLabelWidth)) +
 		dim.Render(fmt.Sprintf(" %d/%d", idx+1, len(children)+1))
+}
+
+// containerLabelWidth is the column the container name occupies in the footer
+// ring. Wide enough that most names fit without padding the counter off-screen,
+// and fixed so the i/n counter stays put as the focused container changes.
+const containerLabelWidth = 20
+
+// stripTabPrefix drops a redundant "<tab>-"/"<tab>_" prefix from a container
+// name: the tab already names the service, so "web-api" under the "web" tab
+// shows as "api". A name equal to the tab (no remainder) is left as-is.
+func stripTabPrefix(name, tab string) string {
+	for _, sep := range []string{"-", "_"} {
+		p := tab + sep
+		if len(name) > len(p) && strings.HasPrefix(name, p) {
+			return name[len(p):]
+		}
+	}
+	return name
+}
+
+// fitLabel pads s with spaces to width w, or truncates it with a trailing "…"
+// when it overflows, so a styled label always occupies exactly w columns.
+func fitLabel(s string, w int) string {
+	r := []rune(s)
+	if len(r) > w {
+		if w <= 1 {
+			return string(r[:w])
+		}
+		return string(r[:w-1]) + "…"
+	}
+	return s + strings.Repeat(" ", w-len(r))
 }
 
 // renderCursorHints renders the selection-mode shortcut strip shown while cursor
@@ -1157,9 +1194,13 @@ func (m *Model) keyFor(a control.Action) string {
 
 func (m *Model) renderRightFooter(dim, val, accent lipgloss.Style) string {
 	now := time.Now()
+	url := barStyle().Foreground(lipgloss.Color("75"))
 	tab := m.activeTab()
 	if tab != allTab {
 		var parts []string
+		if u := m.urls[tab]; u != "" {
+			parts = append(parts, url.Render(u))
+		}
 		if t, ok := m.startedAt[tab]; ok {
 			parts = append(parts, dim.Render("↑ ")+accent.Render(formatUptime(now.Sub(t))))
 		}

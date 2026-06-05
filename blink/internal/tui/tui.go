@@ -40,6 +40,15 @@ func (m *Model) WithLogControl(logDir string, on bool, toggle func() bool) *Mode
 	return m
 }
 
+// WithServiceURLs records the local URL each service listens on, keyed by
+// service name (e.g. "web" -> "http://127.0.0.1:8080"). The footer shows it on
+// that service's tab, left of the uptime. Services absent from the map (no
+// known port) show no URL.
+func (m *Model) WithServiceURLs(urls map[string]string) *Model {
+	m.urls = urls
+	return m
+}
+
 // NewApp wraps a model in a runnable bubbletea program with the alt-screen
 // and mouse capture enabled.
 func NewApp(model *Model) *App {

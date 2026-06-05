@@ -211,7 +211,7 @@ func coversAll(subset, full []string) bool {
 // unrecognized or missing extension falls back to YAML.
 func writeConfig(path string, cfg config.Config) error {
 	cfg.Runtime = config.RuntimeOptions{}
-	f, err := format.FormatForPath(path)
+	f, err := format.ForPath(path)
 	if err != nil {
 		f = format.FormatYAML
 	}

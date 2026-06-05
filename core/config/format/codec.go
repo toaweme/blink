@@ -71,8 +71,8 @@ func codecFor(f Format) (Codec, error) {
 	}
 }
 
-// FormatForPath infers the on-disk Format from a file's extension.
-func FormatForPath(path string) (Format, error) {
+// ForPath infers the on-disk Format from a file's extension.
+func ForPath(path string) (Format, error) {
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".json":
 		return FormatJSON, nil
@@ -88,7 +88,7 @@ func FormatForPath(path string) (Format, error) {
 // CodecForPath returns the codec to decode or encode the file at path, chosen
 // by its extension.
 func CodecForPath(path string) (Codec, error) {
-	f, err := FormatForPath(path)
+	f, err := ForPath(path)
 	if err != nil {
 		return nil, err
 	}

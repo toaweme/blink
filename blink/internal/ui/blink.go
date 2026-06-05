@@ -48,6 +48,7 @@ func (b *Blink) Run(cfg config.Config) error {
 	model := tui.NewModel(sup.Order(), controllerAdapter{sup: sup}).
 		WithKeymap(km).
 		WithZen(cfg.Zen).
+		WithServiceURLs(serviceURLs(cfg)).
 		WithLogControl(cfg.Paths.LogDir, sink.Enabled(), sink.Toggle)
 	app := tui.NewApp(model)
 
@@ -160,6 +161,23 @@ func pollWatchStats(ctx context.Context, app *tui.App, sup *supervisor.Superviso
 			send()
 		}
 	}
+}
+
+// serviceURLs maps each service that binds a known port to a local URL, keyed
+// by service name. Ports come from the service's probed/configured Ports,
+// resolved against its env (env-referenced ports fall back to the process
+// environment, where .env was loaded). The first resolvable port wins; a
+// service with none is omitted, so the footer shows nothing for it.
+func serviceURLs(cfg config.Config) map[string]string {
+	urls := make(map[string]string, len(cfg.Services))
+	for _, svc := range cfg.Services {
+		ports := config.ResolvePorts(svc.Ports, svc.Env)
+		if len(ports) == 0 {
+			continue
+		}
+		urls[svc.Name] = fmt.Sprintf("http://127.0.0.1:%d", ports[0])
+	}
+	return urls
 }
 
 // stringError turns a protocol-wire error string back into an error so the
