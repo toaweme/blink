@@ -52,7 +52,7 @@ func run() error {
 	}
 
 	cliApp := cli.NewApp(cli.Config{Name: "blink", Version: version}, cli.GlobalFlags{Cwd: cwd})
-	cliApp.Add("help", help.NewHelpCommand(cliApp.Config, cliApp.Commands, cliApp.OutputFormats))
+	cliApp.Add("help", help.NewHelpCommand(cliApp.Config, cliApp.Commands, cliApp.OutputFormats, cliApp.DefaultCommand))
 
 	commandRun := app.NewRunCommand(reg)
 

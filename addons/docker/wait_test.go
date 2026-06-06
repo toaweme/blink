@@ -14,7 +14,7 @@ func Test_CollectPorts(t *testing.T) {
 		{Service: "db", Publishers: []composePublisher{
 			{PublishedPort: 5432, Protocol: "tcp"},
 			{PublishedPort: 5432, Protocol: "tcp"}, // dup, skipped
-			{PublishedPort: 53, Protocol: "udp"},    // non-tcp, skipped
+			{PublishedPort: 53, Protocol: "udp"},   // non-tcp, skipped
 		}},
 	}
 
