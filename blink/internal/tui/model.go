@@ -22,6 +22,10 @@ const (
 	pulseInterval    = 700 * time.Millisecond
 )
 
+// accentColor is the shared teal/emerald used for the active/current/selected
+// thing across the UI (active tab, focused-container badge).
+const accentColor = "36"
+
 // Controller is the session-action sink the TUI dispatches into. Only session
 // actions reach here; view actions stay in the model.
 type Controller interface {
@@ -137,20 +141,11 @@ type Model struct {
 	flash      string
 	flashColor string
 	flashAt    time.Time
-
-	// watchHintAt is when the watch-stats hint was last armed (a tab switch). The
-	// center footer shows it only for watchHintDuration after a switch, then the
-	// heartbeat tick fades it, same as flash.
-	watchHintAt time.Time
 }
 
 // flashDuration is how long a transient action badge (COPIED/WRITTEN) stays
 // visible before the next render drops it.
 const flashDuration = 1500 * time.Millisecond
-
-// watchHintDuration is how long the watch-stats hint stays in the footer
-// after a tab switch before the heartbeat tick fades it.
-const watchHintDuration = 3 * time.Second
 
 // tabScroll captures where the viewport was sitting for a given tab so it can
 // be restored on return. When followTail is set, yOffset is ignored and restore
@@ -330,11 +325,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.restoreScroll()
 		return m, nil
 	case WatchStatsMsg:
-		// flash the counts once when first known, so the watch footprint shows
-		// on startup without a tab switch.
-		if m.watchPerSvc == nil {
-			m.watchHintAt = time.Now()
-		}
 		m.watchFiles = msg.Files
 		m.watchDirs = msg.Dirs
 		m.watchPerSvc = msg.PerSvc
@@ -792,9 +782,6 @@ func (m *Model) saveScroll() {
 // restoreScroll repositions the viewport to wherever the now-active tab was
 // last seen. Brand-new tabs default to tail-following.
 func (m *Model) restoreScroll() {
-	// every tab switch funnels through here, so arm the watch-stats hint for the
-	// now-active tab.
-	m.watchHintAt = time.Now()
 	if !m.ready {
 		return
 	}
@@ -991,30 +978,45 @@ func (m *Model) renderTabs() string {
 func (m *Model) renderTabChips() string {
 	var parts []string
 	for i, name := range m.tabs {
+		// color-code the label by service status: gray pending, red error,
+		// green active. the all-tab has no status, so it stays neutral.
+		fg := lipgloss.Color("250")
+		if name != allTab {
+			fg = statusColor(m.statuses[name])
+		}
 		var chip string
 		if i == m.active {
-			// active tab uses a flat filled chip.
+			// active tab is a filled teal chip with white text; teal/emerald is the
+			// shared accent for the current/selected thing across the UI.
 			chip = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("231")).
-				Background(lipgloss.Color("36")).
+				Background(lipgloss.Color(accentColor)).
 				Bold(true).
 				Padding(0, 1).
 				Render(name)
 		} else {
-			// inactive tabs are plain text, no background.
+			// inactive tabs are plain text colored by status, no background.
 			chip = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("250")).
+				Foreground(fg).
 				Padding(0, 1).
 				Render(name)
-		}
-		// the status dot lives outside the chip so its ANSI color reset doesn't
-		// punch a hole through the chip's background fill.
-		if name != allTab {
-			chip = m.statusDot(m.statuses[name]) + chip
 		}
 		parts = append(parts, chip)
 	}
 	return strings.Join(parts, " ")
+}
+
+// statusColor maps a service status to the tab label color: green when active,
+// red on error, gray while pending or otherwise idle.
+func statusColor(status string) lipgloss.Color {
+	switch status {
+	case "running":
+		return lipgloss.Color("82")
+	case "crashed":
+		return lipgloss.Color("203")
+	default:
+		return lipgloss.Color("244")
+	}
 }
 
 // barBgColor is the background tint used for the bottom bar (footer).
@@ -1070,7 +1072,6 @@ func (m *Model) renderBar(left, center, right string) string {
 func (m *Model) renderFooter() string {
 	dim := barStyle().Foreground(lipgloss.Color("244"))
 	val := barStyle().Foreground(lipgloss.Color("250")).Bold(true)
-	accent := barStyle().Foreground(lipgloss.Color("82"))
 
 	// left: selection shortcuts while in cursor mode; otherwise a single hint for
 	// the key that enters it, so the feature is discoverable. The tab chips
@@ -1091,31 +1092,10 @@ func (m *Model) renderFooter() string {
 		}
 	}
 
-	// center: watch stats, shown only briefly after a tab switch then faded. On
-	// the all-tab show aggregates; on a service tab show that service's counts.
-	// Hidden until the first WatchStatsMsg lands or when the service has no
-	// watcher.
-	var center string
-	if time.Since(m.watchHintAt) < watchHintDuration {
-		files, dirs := m.watchFiles, m.watchDirs
-		if m.activeTab() != allTab {
-			if s, ok := m.watchPerSvc[m.activeTab()]; ok {
-				files, dirs = s.Files, s.Dirs
-			} else {
-				files, dirs = 0, 0
-			}
-		}
-		if files > 0 || dirs > 0 {
-			center = dim.Render("watching ") +
-				val.Render(strconv.Itoa(files)) + dim.Render(" files, ") +
-				val.Render(strconv.Itoa(dirs)) + dim.Render(" dirs")
-		}
-	}
+	// right: watch footprint, uptime + reload count for the active tab.
+	right := m.renderRightFooter(dim, val)
 
-	// right: uptime + reload count for the active tab.
-	right := m.renderRightFooter(dim, val, accent)
-
-	return m.renderBar(left, center, right)
+	return m.renderBar(left, "", right)
 }
 
 // renderContainerNav renders the compact container indicator shown in the footer
@@ -1211,7 +1191,7 @@ func (m *Model) keyFor(a control.Action) string {
 	return ""
 }
 
-func (m *Model) renderRightFooter(dim, val, accent lipgloss.Style) string {
+func (m *Model) renderRightFooter(dim, val lipgloss.Style) string {
 	now := time.Now()
 	url := barStyle().Foreground(lipgloss.Color("75"))
 	tab := m.activeTab()
@@ -1222,8 +1202,11 @@ func (m *Model) renderRightFooter(dim, val, accent lipgloss.Style) string {
 		if u := formatPortsURL(m.ports[m.viewKey()]); u != "" {
 			parts = append(parts, url.Render(u))
 		}
+		if w := m.renderWatchStat(dim, val); w != "" {
+			parts = append(parts, w)
+		}
 		if t, ok := m.startedAt[tab]; ok {
-			parts = append(parts, dim.Render("↑ ")+accent.Render(formatUptime(now.Sub(t))))
+			parts = append(parts, dim.Render("↑ ")+dim.Render(formatUptime(now.Sub(t))))
 		}
 		if n := m.reloads[tab]; n > 0 {
 			parts = append(parts, dim.Render("⟳ ")+val.Render(strconv.Itoa(n)))
@@ -1246,13 +1229,36 @@ func (m *Model) renderRightFooter(dim, val, accent lipgloss.Style) string {
 		total += n
 	}
 	var parts []string
+	if w := m.renderWatchStat(dim, val); w != "" {
+		parts = append(parts, w)
+	}
 	if !oldest.IsZero() {
-		parts = append(parts, dim.Render("↑ ")+accent.Render(formatUptime(now.Sub(oldest))))
+		parts = append(parts, dim.Render("↑ ")+dim.Render(formatUptime(now.Sub(oldest))))
 	}
 	if total > 0 {
 		parts = append(parts, dim.Render("⟳ ")+val.Render(strconv.Itoa(total)))
 	}
 	return strings.Join(parts, dim.Render(" · "))
+}
+
+// renderWatchStat is the compact watch footprint shown left of the uptime:
+// "watch <files>f <dirs>d". On the all-tab it shows the aggregate counts, on a
+// service tab that service's own counts. Empty until the first WatchStatsMsg
+// lands or when the active service has no watcher.
+func (m *Model) renderWatchStat(dim, val lipgloss.Style) string {
+	files, dirs := m.watchFiles, m.watchDirs
+	if m.activeTab() != allTab {
+		s, ok := m.watchPerSvc[m.activeTab()]
+		if !ok {
+			return ""
+		}
+		files, dirs = s.Files, s.Dirs
+	}
+	if files == 0 && dirs == 0 {
+		return ""
+	}
+	return dim.Render("watch ") + val.Render(strconv.Itoa(files)) + dim.Render("f ") +
+		val.Render(strconv.Itoa(dirs)) + dim.Render("d")
 }
 
 // formatPortsURL renders a service's listening ports as a loopback address:
@@ -1303,7 +1309,7 @@ func (m *Model) modeBadges() string {
 		pills = append(pills, badge("SELECT", "214"))
 	}
 	if c := m.childFocus[m.activeTab()]; c != "" {
-		pills = append(pills, badge(c, "36"))
+		pills = append(pills, badge(c, accentColor))
 	}
 	return strings.Join(pills, " ")
 }
@@ -1317,7 +1323,7 @@ func (m *Model) setFlash(text, color string) {
 
 func badge(text, color string) string {
 	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color("232")).
+		Foreground(lipgloss.Color("231")).
 		Background(lipgloss.Color(color)).
 		Padding(0, 1).
 		Bold(true).
@@ -1330,26 +1336,6 @@ func padRight(s string, n int) string {
 		return s
 	}
 	return s + strings.Repeat(" ", n-w)
-}
-
-// statusDot picks a glyph and color per status. Transient statuses use the
-// spinner frame; running uses a soft pulse.
-func (m *Model) statusDot(status string) string {
-	switch status {
-	case "running":
-		// pulse between close shades of green every tick.
-		shades := []lipgloss.Color{"82", "118", "82", "46"}
-		c := shades[m.pulsePhase%len(shades)]
-		return lipgloss.NewStyle().Foreground(c).Render("●")
-	case "building", "restarting", "installing":
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Render(m.spinner.View())
-	case "crashed":
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render("✖")
-	case "exited", "stopped":
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("○")
-	default:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("·")
-	}
 }
 
 // renderBrand draws the gradient "blink" wordmark in the header.
