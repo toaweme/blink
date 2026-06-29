@@ -1,0 +1,35 @@
+name: Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # publish the report to the care dashboard
+    steps:
+      # v7.0.0 (https://github.com/actions/checkout/releases/tag/v7.0.0)
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      # v6.5.0 (https://github.com/actions/setup-go/releases/tag/v6.5.0)
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: stable
+
+      - uses: toaweme/care@v0.4.0
+        with:
+          strict: true                                  # fail CI on a failing check
+          output: report.care.json                      # write the JSON report
+          publish-url: https://code.toawe.me/ingest?kind=care

@@ -1,0 +1,98 @@
+version: 2
+
+project_name: blink
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: blink
+    main: ./cmd/blink
+    binary: blink
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # reproducible builds: pin the binary's build time to the commit time.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - ids: [blink]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x64
+      {{- else if eq .Arch "386" }}x32
+      {{- else }}{{ .Arch }}{{ end }}
+
+checksum:
+  name_template: "checksums.txt"
+
+# keyless cosign signing of the checksums file. Verifying checksums.txt
+# transitively verifies every archive listed in it, so one signature covers the
+# whole release. Needs cosign in CI and an OIDC token (id-token: write).
+signs:
+  - id: checksum
+    cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - "sign-blob"
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+brews:
+  - name: blink
+    directory: Formula
+    homepage: "https://github.com/toaweme/blink"
+    description: "Live-reload supervisor for local dev"
+    license: "MIT"
+    # one shared tap holds a Formula/<project>.rb per project, so every toaweme
+    # tool installs as `brew install toaweme/tap/<project>`.
+    repository:
+      owner: toaweme
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    # don't push a formula for pre-release tags (e.g. v1.0.0-rc1).
+    skip_upload: auto
+    test: |
+      system "#{bin}/blink", "--help"
+
+changelog:
+  # keep this false. The release notes come from care's own --release-notes file
+  # (see release.yml), which already bypasses goreleaser's commit changelog.
+  disable: false
+
+release:
+  # mark vX.Y.Z-rc / -beta / -alpha tags as GitHub pre-releases automatically.
+  prerelease: auto
+  footer: |
+    ## Install
+
+    ```sh
+    # go
+    go install github.com/toaweme/blink/cmd/blink@{{ .Tag }}
+
+    # homebrew
+    brew install toaweme/tap/blink
+
+    # binary (linux x64; swap os/arch as needed)
+    wget -qO- https://github.com/toaweme/blink/releases/download/{{ .Tag }}/blink_{{ .Version }}_linux_x64.tar.gz | tar xz
+    ```

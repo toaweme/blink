@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write   # create the GitHub release and upload assets
+  id-token: write   # mint the OIDC token cosign uses for keyless signing
+
+jobs:
+  # gate the release on care: a tag only ships if care's checks pass on the
+  # tagged commit.
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      # v7.0.0 (https://github.com/actions/checkout/releases/tag/v7.0.0)
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      # v6.5.0 (https://github.com/actions/setup-go/releases/tag/v6.5.0)
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+
+      - uses: toaweme/care@v0.4.0
+        with:
+          strict: true
+
+  goreleaser:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      # v7.0.0 (https://github.com/actions/checkout/releases/tag/v7.0.0)
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 0   # goreleaser needs full history for the changelog
+
+      # v6.5.0 (https://github.com/actions/setup-go/releases/tag/v6.5.0)
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+
+      # v4.1.2 (https://github.com/sigstore/cosign-installer/releases/tag/v4.1.2)
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+
+      - name: Install care
+        run: go install github.com/toaweme/care/cmd/care@v0.4.0
+
+      # care generates the conventional-commit notes (the org's single source),
+      # which goreleaser then uses verbatim via --release-notes. Written to the
+      # runner temp dir, not the work tree, so goreleaser's --clean check stays happy.
+      - name: Generate release notes
+        run: |
+          notes="$RUNNER_TEMP/notes.md"
+          care changelog | tee "$notes" || true
+          if [ ! -s "$notes" ]; then
+            echo "::warning::care changelog produced empty notes; using fallback"
+            echo "See the commit history for changes in this release." > "$notes"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # v7.2.2 (https://github.com/goreleaser/goreleaser-action/releases/tag/v7.2.2)
+      - uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89
+        with:
+          version: "~> v2"
+          args: release --clean --release-notes=${{ runner.temp }}/notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
