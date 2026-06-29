@@ -17,7 +17,7 @@ import (
 // and ports numeric; -Fn emits machine-readable output with name lines prefixed
 // "n".
 func listenPorts(pgid int) ([]int, error) {
-	//nolint:gosec // fixed lsof invocation; the only variable arg is pgid, an int formatted via strconv.
+	//nolint:gosec,noctx // fixed, short-lived lsof probe; the only variable arg is pgid, an int formatted via strconv. No context to bind: the call returns promptly and has no lifecycle to cancel.
 	out, err := exec.Command("lsof", "-nP", "-a", "-g", strconv.Itoa(pgid), "-iTCP", "-sTCP:LISTEN", "-Fn").Output()
 	if err != nil {
 		// lsof exits 1 when nothing matches; that's an empty set, not a failure.

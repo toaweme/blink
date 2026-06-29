@@ -67,6 +67,7 @@ func Listeners(ports []int) ([]int, error) {
 	for _, p := range ports {
 		args = append(args, "-iTCP:"+strconv.Itoa(p))
 	}
+	//nolint:noctx // fixed, short-lived lsof scan with no lifecycle to cancel; args are numeric ports formatted via strconv.
 	cmd := exec.Command("lsof", args...)
 	out, err := cmd.Output()
 	// lsof exits 1 when nothing matches; that isn't an error here.

@@ -216,6 +216,7 @@ func (p *Plain) maybeStartInputLoop(ctx context.Context) (func(), bool) {
 		return func() {}, false
 	}
 	r := bufio.NewReader(os.Stdin)
+	//nolint:gosec // the goroutine's only context.Background use is the shutdown Stop below, which intentionally does not inherit the about-to-cancel run ctx.
 	go func() {
 		for {
 			select {

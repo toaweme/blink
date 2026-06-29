@@ -48,7 +48,10 @@ func (r *Runner) kill(cmd *exec.Cmd, interrupt bool, graceTimeout time.Duration)
 
 func (r *Runner) start(cfg Config) (*exec.Cmd, io.ReadCloser, error) {
 	log.Info("executing", "service", cfg.Name, "command", cfg.Command, "dir", cfg.Dir)
-	//nolint:gosec // cfg.Command is the user's own service command from blink.yaml
+	// noctx: the Runner manages the child's lifecycle directly through its own
+	// process group (see kill), so binding it to a context would kill only the
+	// immediate process and race that teardown.
+	//nolint:gosec,noctx // cfg.Command is the user's own service command from blink.yaml
 	c := exec.Command("/bin/sh", "-c", cfg.Command)
 	c.Dir = cfg.Dir
 	c.Env = os.Environ()
