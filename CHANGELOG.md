@@ -5,7 +5,7 @@ All notable changes to this project are documented here, newest first.
 Entries are generated from [Conventional Commits](https://www.conventionalcommits.org)
 and grouped by change type. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0] - 2026-07-01
 
 ### Features
 
@@ -22,6 +22,7 @@ and grouped by change type. This project adheres to [Semantic Versioning](https:
 
 ### Fixes
 
+- Document intentional noctx/gosec exceptions for care lint by Ignas Bernotas in [bc92714](https://github.com/toaweme/blink/commit/bc927147823d93631e45acebb4608240fc99a532).
 - Tui colors and widgets by Ignas Bernotas in [ffe6bf7](https://github.com/toaweme/blink/commit/ffe6bf78b3f849361cb74f137835266e31c8fc14).
 - Canonical blink.yml config name and Test_ naming convention by Ignas Bernotas in [e674588](https://github.com/toaweme/blink/commit/e67458845f28e4486a22a20dd70ca5ed015078b4).
 - Init + edit rendering by Ignas Bernotas in [a5ee13a](https://github.com/toaweme/blink/commit/a5ee13a75628c64cc0b47ff63af4f6a22603e69e).
@@ -32,8 +33,15 @@ and grouped by change type. This project adheres to [Semantic Versioning](https:
 - Tidy up blink config by Ignas Bernotas in [543dd70](https://github.com/toaweme/blink/commit/543dd70cf96fd85aa49530b8bce2238e4b4280b5).
 - Centralize blink artifacts under .blink via Paths by Ignas Bernotas in [4c5689c](https://github.com/toaweme/blink/commit/4c5689c8725723dcb4033853bb109c74fc6a2bb3).
 
+### CI & Build
+
+- Bump care to v0.6.0 and fix card-svg dark/light wiring by Ignas Bernotas in [96ef96b](https://github.com/toaweme/blink/commit/96ef96bf668abf25d6598bef3e44f10523116903).
+
 ### Chores & Other
 
+- Add README, LICENSE, CHANGELOG, and CI/release workflows by Ignas Bernotas in [25669df](https://github.com/toaweme/blink/commit/25669df2ce188c535faf453de8f31f275885d7fa).
 - Tidy up by Ignas Bernotas in [3a18a20](https://github.com/toaweme/blink/commit/3a18a20060f129feaf48997df76eb4579880bc48).
 - .golangci.yml + linter fixes + code comments by Ignas Bernotas in [7c457e2](https://github.com/toaweme/blink/commit/7c457e20e0903c26138a428f78345b402654f45a).
 - Initial commit :) by Ignas Bernotas in [60839ba](https://github.com/toaweme/blink/commit/60839ba0804802bcf9d5d672d540e7f78ef0ceb3).
+
+[0.1.0]: https://github.com/toaweme/blink/releases/tag/0.1.0
