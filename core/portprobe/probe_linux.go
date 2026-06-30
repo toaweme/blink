@@ -130,15 +130,15 @@ func pidsInGroup(pgid int) ([]int, error) {
 // The format is "pid (comm) state ppid pgrp ...": comm can contain spaces and
 // parens, so the fixed fields are read from after the final ')'.
 func statPgrp(pid int) int {
-	data, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
 		return 0
 	}
-	close := strings.LastIndex(string(data), ")")
-	if close < 0 {
+	closeParen := strings.LastIndex(string(data), ")")
+	if closeParen < 0 {
 		return 0
 	}
-	fields := strings.Fields(string(data)[close+1:])
+	fields := strings.Fields(string(data)[closeParen+1:])
 	// after comm: [0]=state [1]=ppid [2]=pgrp
 	if len(fields) < 3 {
 		return 0
@@ -153,7 +153,7 @@ func statPgrp(pid int) int {
 // socketInodes returns the socket inodes held as open fds by pid, read from the
 // "socket:[inode]" symlink targets under /proc/<pid>/fd.
 func socketInodes(pid int) []string {
-	dir := filepath.Join("/proc", strconv.Itoa(pid), "fd")
+	dir := fmt.Sprintf("/proc/%d/fd", pid)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
