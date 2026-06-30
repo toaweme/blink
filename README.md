@@ -154,8 +154,8 @@ The default `blink` UI gives one tab per service plus an `all` tab, color-coded 
 Reports for this repo are hosted by our <a href="https://code.toawe.me">code viewer</a>, which also serves the badges and cards above.
 
 <p align="center">
-  <a href="https://code.toawe.me/toaweme/blink/health"><picture><source media="(prefers-color-scheme: dark)" srcset="https://code.toawe.me/toaweme/blink/card.svg"><source media="(prefers-color-scheme: light)" srcset="https://code.toawe.me/toaweme/blink/card-light.svg"><img alt="blink health" src="https://code.toawe.me/toaweme/blink/card-light.svg" width="48%"></picture></a>
-  <a href="https://code.toawe.me/toaweme/blink/code"><picture><source media="(prefers-color-scheme: dark)" srcset="https://code.toawe.me/toaweme/blink/code-card.svg"><source media="(prefers-color-scheme: light)" srcset="https://code.toawe.me/toaweme/blink/code-card-light.svg"><img alt="blink code" src="https://code.toawe.me/toaweme/blink/code-card-light.svg" width="48%"></picture></a>
+  <a href="https://code.toawe.me/toaweme/blink/health"><picture><source media="(prefers-color-scheme: dark)" srcset="https://code.toawe.me/toaweme/blink/card-dark.svg"><source media="(prefers-color-scheme: light)" srcset="https://code.toawe.me/toaweme/blink/card.svg"><img alt="blink health" src="https://code.toawe.me/toaweme/blink/card.svg" width="48%"></picture></a>
+  <a href="https://code.toawe.me/toaweme/blink/code"><picture><source media="(prefers-color-scheme: dark)" srcset="https://code.toawe.me/toaweme/blink/code-card-dark.svg"><source media="(prefers-color-scheme: light)" srcset="https://code.toawe.me/toaweme/blink/code-card.svg"><img alt="blink code" src="https://code.toawe.me/toaweme/blink/code-card.svg" width="48%"></picture></a>
 </p>
 
 ---

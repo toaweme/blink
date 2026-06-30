@@ -28,8 +28,10 @@ jobs:
         with:
           go-version: stable
 
-      - uses: toaweme/care@v0.4.0
+      # v0.6.0 (https://github.com/toaweme/care/releases/tag/v0.6.0)
+      - uses: toaweme/care@53308f3c6d855a6f289b38cb73afe9c6ad19cfc6
         with:
+          version: v0.6.0                               # required when pinning to a SHA
           strict: true                                  # fail CI on a failing check
           output: report.care.json                      # write the JSON report
           publish-url: https://code.toawe.me/ingest?kind=care
