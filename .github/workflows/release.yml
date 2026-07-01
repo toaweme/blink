@@ -25,10 +25,9 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # v0.7.1 (https://github.com/toaweme/care/releases/tag/v0.7.1)
-      - uses: toaweme/care@a17d8d9fea047c3a8320bde8a8d38c39be58aa9b
+      # v0.8.0 (https://github.com/toaweme/care/releases/tag/v0.8.0)
+      - uses: toaweme/care@3284955e1fb40602f84d1f7f192e67bc2ef78221
         with:
-          version: v0.7.1   # required when pinning to a SHA
           strict: true
 
   goreleaser:
@@ -45,12 +44,10 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # v4.1.2 (https://github.com/sigstore/cosign-installer/releases/tag/v4.1.2)
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
-
-      # v0.7.1 (https://github.com/toaweme/care/releases/tag/v0.7.1)
-      - name: Install care
-        run: go install github.com/toaweme/care/cmd/care@a17d8d9fea047c3a8320bde8a8d38c39be58aa9b
+      # v0.8.0 (https://github.com/toaweme/care/releases/tag/v0.8.0)
+      - uses: toaweme/care@3284955e1fb40602f84d1f7f192e67bc2ef78221
+        with:
+          install-only: true
 
       # care generates the conventional-commit notes (the org's single source),
       # which goreleaser then uses verbatim via --release-notes. Written to the

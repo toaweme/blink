@@ -28,12 +28,10 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # v0.7.1 (https://github.com/toaweme/care/releases/tag/v0.7.1)
-      - uses: toaweme/care@a17d8d9fea047c3a8320bde8a8d38c39be58aa9b
+      # v0.8.0 (https://github.com/toaweme/care/releases/tag/v0.8.0)
+      - uses: toaweme/care@3284955e1fb40602f84d1f7f192e67bc2ef78221
         with:
-          version: v0.7.1                               # required when pinning to a SHA
           strict: true                                  # fail CI on a failing check
-          output: report.care.json                      # write the JSON report
           publish-url: https://code.toawe.me/ingest?kind=care
 
   # care only builds/lints on the runner's own GOOS/GOARCH, so a build break
