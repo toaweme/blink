@@ -5,11 +5,12 @@ All notable changes to this project are documented here, newest first.
 Entries are generated from [Conventional Commits](https://www.conventionalcommits.org)
 and grouped by change type. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.1] - 2026-07-01
 
-### CI & Build
+### Chores & Other
 
-- Bump care to v0.8.1 by [@iberflow](https://github.com/iberflow) in [7ad5277](https://github.com/toaweme/blink/commit/7ad5277ae636c336231311728448792fdbd1bbfa).
+- Bump cli to v0.3.3 by [@iberflow](https://github.com/iberflow) in [b463a79](https://github.com/toaweme/blink/commit/b463a790e2f144f7a2c9cbe919904322447f1e85).
+- Bump toaweme deps to latest releases by [@iberflow](https://github.com/iberflow) in [80b1f91](https://github.com/toaweme/blink/commit/80b1f91063dfa623b0e43bea9ab6a5eda4fc79fe).
 
 ## [0.1.0] - 2026-07-01
 
@@ -61,5 +62,5 @@ and grouped by change type. This project adheres to [Semantic Versioning](https:
 - Bump deps by [@iberflow](https://github.com/iberflow) in [8678e08](https://github.com/toaweme/blink/commit/8678e08f4f4027ca1d983fa388704052e276a35e).
 - Freeze go 1.26.4 by [@iberflow](https://github.com/iberflow) in [c846eee](https://github.com/toaweme/blink/commit/c846eeefe2e0ed9afc11748e172443acdfacc85e).
 
-[Unreleased]: https://github.com/toaweme/blink/compare/v0.1.0...HEAD
+[0.1.1]: https://github.com/toaweme/blink/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/toaweme/blink/releases/tag/v0.1.0
