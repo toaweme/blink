@@ -26,7 +26,7 @@ jobs:
       # v6.5.0 (https://github.com/actions/setup-go/releases/tag/v6.5.0)
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
-          go-version: stable
+          go-version-file: go.mod
 
       # v0.7.1 (https://github.com/toaweme/care/releases/tag/v0.7.1)
       - uses: toaweme/care@a17d8d9fea047c3a8320bde8a8d38c39be58aa9b
@@ -35,3 +35,29 @@ jobs:
           strict: true                                  # fail CI on a failing check
           output: report.care.json                      # write the JSON report
           publish-url: https://code.toawe.me/ingest?kind=care
+
+  # care only builds/lints on the runner's own GOOS/GOARCH, so a build break
+  # confined to a platform-specific file (e.g. a windows-only source) slips
+  # through and is only caught by goreleaser during a tag push. Cross-compile
+  # every release target here so that failure surfaces on every PR instead.
+  cross-build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+    steps:
+      # v7.0.0 (https://github.com/actions/checkout/releases/tag/v7.0.0)
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      # v6.5.0 (https://github.com/actions/setup-go/releases/tag/v6.5.0)
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+
+      - name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: go build ./...
