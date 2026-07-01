@@ -63,7 +63,7 @@ brews:
     directory: Formula
     homepage: "https://github.com/toaweme/blink"
     description: "Live-reload supervisor for local dev"
-    license: "MIT"
+    license: "Apache-2.0"
     # one shared tap holds a Formula/<project>.rb per project, so every toaweme
     # tool installs as `brew install toaweme/tap/<project>`.
     repository:

@@ -9,7 +9,7 @@
     </picture>
 </a>
 [![GitHub Tag](https://img.shields.io/github/v/tag/toaweme/blink?label=Tag&color=green)](https://github.com/toaweme/blink/releases)
-[![License](https://img.shields.io/badge/License-MIT-blue)](/LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue)](/LICENSE)
 
 ## Boot your dev stack
 
@@ -159,7 +159,7 @@ The default `blink` UI gives one tab per service plus an `all` tab, color-coded 
 
 ## Supporting blink
 
-blink is free, open source (MIT), fully offline, and always will be. Nothing is
+blink is free, open source (Apache 2.0), fully offline, and always will be. Nothing is
 gated, time-limited, or hidden.
 
 The only thing a license changes is cosmetic. It removes a small support badge
