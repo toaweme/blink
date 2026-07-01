@@ -85,8 +85,12 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/toaweme/cli v0.3.1 h1:MK3qWmszYIG6zOYMw3NUIAjUz0OpVA4s01Y+Nj20tz0=
 github.com/toaweme/cli v0.3.1/go.mod h1:doD+PmWhrD8Y7RWG+9wyLzC1oWZodxMwAk3CwIkGbJ4=
+github.com/toaweme/cli v0.3.2 h1:RWFATkFAun9JGYc214eE6kvbbdyKU0eNENdwtQD1CJU=
+github.com/toaweme/cli v0.3.2/go.mod h1:+Ny5EHzApMvlsgnzPiIa/yvsR5nU4oVr148/8OF4Qpc=
 github.com/toaweme/log v0.2.0 h1:+yiXSxPtBwBzyYXdURJD1i5g/2yzXsrj7nAkOEpt5zQ=
 github.com/toaweme/log v0.2.0/go.mod h1:MDocqlOT3Wz7NjvJedW86NwSYewwPOc6eqQMoKYwa00=
+github.com/toaweme/log v0.2.1 h1:OiZSUKa1/d4Lkf4nTIe1VGabStMRVo2FzUyMZWedn4w=
+github.com/toaweme/log v0.2.1/go.mod h1:MDocqlOT3Wz7NjvJedW86NwSYewwPOc6eqQMoKYwa00=
 github.com/toaweme/structs v0.3.0 h1:FSO7nzVSAHt999hMxZcRkuL3Jrzu84Xyi+xze9IltW4=
 github.com/toaweme/structs v0.3.0/go.mod h1:baBPdZnvyXWdMgk0M1ksmMnGRE+ShMrh7RFc+Xv7r0Y=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e h1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=

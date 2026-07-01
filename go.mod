@@ -15,8 +15,8 @@ require (
 	github.com/mattn/go-isatty v0.0.22
 	github.com/pelletier/go-toml/v2 v2.4.2
 	github.com/stretchr/testify v1.11.1
-	github.com/toaweme/cli v0.3.1
-	github.com/toaweme/log v0.2.0
+	github.com/toaweme/cli v0.3.2
+	github.com/toaweme/log v0.2.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 
