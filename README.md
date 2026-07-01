@@ -157,6 +157,19 @@ The default `blink` UI gives one tab per service plus an `all` tab, color-coded 
 - **Scoped state and reset** - artifacts under a per-project `.blink/`, user-scoped `~/.blink`, all overridable via `$BLINK_*`, with `blink nuke` for a scoped wipe.
 - **Fully offline** - no network calls at build or run time.
 
+## Supporting blink
+
+blink is free, open source (MIT), fully offline, and always will be. Nothing is
+gated, time-limited, or hidden.
+
+The only thing a license changes is cosmetic. It removes a small support badge
+shown in the TUI. That is the whole deal. The tool behaves identically with
+or without it, and there is no license check that phones home.
+
+You never have to pay. Keep the badge, or build your own badge-free version from
+source. A license is simply a way to say thanks if blink saves you time, and to
+quiet that one badge. Pricing will be announced later.
+
 ## Hosted code and health reports
 
 Reports for this repo are hosted by our <a href="https://code.toawe.me">code viewer</a>, which also serves the badges and cards above.
