@@ -11,9 +11,13 @@
 [![GitHub Tag](https://img.shields.io/github/v/tag/toaweme/blink?label=Tag&color=green)](https://github.com/toaweme/blink/releases)
 [![License](https://img.shields.io/badge/License-MIT-blue)](/LICENSE)
 
-## Live-reload supervisor for local dev
+## Boot your dev stack
 
-`blink` boots every service in your project, keeps them alive, and restarts them (and anything that depends on them) the moment a file changes, all behind one bubbletea TUI. Point it at a repo, run `blink`, and your Go binaries, Node apps, and Docker compose stacks come up together with multiplexed logs, per-service tabs, and port reclaiming. It detects what your project runs, so the common case needs zero config, and it stays fully offline.
+`blink` boots your every service, writes and prints logs, keeps everything alive, and restarts when files change or services restart. All behind beautiful TUI or a headless mode. 
+
+Point it at a repo (or a few), run `blink`, and your shell scripts, Go binaries, Node apps, and Docker compose stacks come up together with multiplexed logs, per-service tabs, and port reclaiming. 
+
+It detects what your project runs, so the common case needs zero config, and it stays fully offline.
 
 ## Install
 
