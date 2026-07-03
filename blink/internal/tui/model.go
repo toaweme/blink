@@ -302,8 +302,17 @@ func (m *Model) cycleChild(delta int) {
 }
 
 // Init starts the spinner and the heartbeat tick that drive the soft animations.
+// When launched straight into zen (`-z`), it also leaves the alt-screen and
+// releases the mouse right away: the program is created with WithAltScreen, and
+// tea.Println (how raw mode streams) is dropped while the alt-screen is active, so
+// without this a `-z` start is a blank screen swallowing every log line. Toggling
+// zen at runtime goes through enterRawMode, which already does this.
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, tickCmd())
+	cmds := []tea.Cmd{m.spinner.Tick, tickCmd()}
+	if m.rawMode {
+		cmds = append(cmds, tea.ExitAltScreen, tea.DisableMouse)
+	}
+	return tea.Batch(cmds...)
 }
 
 // Update routes incoming messages to per-type handlers. Heavy logic lives in
@@ -643,14 +652,30 @@ func (m *Model) rawNav(nav func()) tea.Cmd {
 	return m.rawFlush()
 }
 
-// rawFlush pushes the focused view's buffered backlog into native scrollback,
+// rawFlush pushes the focused view's recent backlog into native scrollback,
 // headed by a marker naming the view, after a zen-mode tab or container switch.
+// Only the last screenful is flushed: the whole buffer is up to 5000 lines and
+// re-dumping it on every switch buries the terminal, so this lands the user on
+// recent context and leaves older history to their native scrollback.
 func (m *Model) rawFlush() tea.Cmd {
 	header := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("── " + m.rawFocusLabel() + " ──")
-	if buf := m.buffers[m.viewKey()]; len(buf) > 0 {
+	buf := m.buffers[m.viewKey()]
+	if n := m.zenFlushLines(); len(buf) > n {
+		buf = buf[len(buf)-n:]
+	}
+	if len(buf) > 0 {
 		return tea.Println(header + "\n" + strings.Join(buf, "\n"))
 	}
 	return tea.Println(header)
+}
+
+// zenFlushLines is how many trailing lines a zen view switch replays: a screenful
+// from the last window size, or a sane default before the first resize arrives.
+func (m *Model) zenFlushLines() int {
+	if m.height > 1 {
+		return m.height - 1
+	}
+	return 40
 }
 
 // rawFocusLabel names the view zen mode is currently streaming: the tab, or
