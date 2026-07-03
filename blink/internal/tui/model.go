@@ -403,9 +403,13 @@ func (m *Model) handleLineMsg(msg LineMsg) (tea.Model, tea.Cmd) {
 	}
 	m.appendLine(msg.Service, line)
 	if m.rawMode {
-		// stream into the native terminal so the user can scroll and select.
-		prefix := serviceStyle(msg.Service).Render("[" + msg.Service + "]")
-		return m, tea.Println(prefix + " " + line)
+		// stream only the view the user has tabbed to into the native terminal,
+		// so zen mode can filter to one service or container while still handing
+		// the screen back for scroll and select.
+		if out, ok := m.rawTail(msg.Service, msg.Child, line, msg.Line); ok {
+			return m, tea.Println(out)
+		}
+		return m, nil
 	}
 	if m.activeTab() == allTab || m.activeTab() == msg.Service {
 		m.refreshViewportFollow()
@@ -449,18 +453,22 @@ func (m *Model) handleStatusMsg(msg StatusMsg) (tea.Model, tea.Cmd) {
 		m.appendLine(msg.Service, lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render("error: "+msg.Err.Error()))
 	}
 	label := "── " + msg.Status + " ──"
+	childLabel := ""
 	if msg.Child != "" {
 		// surface the container so it joins the in-tab ring before its first log
 		// line, and give its focused view the bare status marker.
 		m.noteChild(msg.Service, msg.Child)
-		m.appendChildLine(msg.Service, msg.Child, lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("── "+msg.Status+" ──"))
+		childLabel = lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("── " + msg.Status + " ──")
+		m.appendChildLine(msg.Service, msg.Child, childLabel)
 		label = "── " + msg.Child + ": " + msg.Status + " ──"
 	}
 	labelLine := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render(label)
 	m.appendLine(msg.Service, labelLine)
 	if m.rawMode {
-		prefix := serviceStyle(msg.Service).Render("[" + msg.Service + "]")
-		return m, tea.Println(prefix + " " + labelLine)
+		if out, ok := m.rawTail(msg.Service, msg.Child, labelLine, childLabel); ok {
+			return m, tea.Println(out)
+		}
+		return m, nil
 	}
 	if m.activeTab() == allTab || m.activeTab() == msg.Service {
 		m.refreshViewportFollow()
@@ -521,18 +529,89 @@ func (m *Model) handleCommandCenterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleRawModeKey is the minimal keymap active while the TUI has handed the
-// screen back to the user. Only z (exit zen) and quit respond; everything else
-// passes through to the native terminal.
+// screen back to the user. Quit and z (exit zen) respond, plus tab and container
+// navigation so zen mode can filter which service/container streams; everything
+// else passes through to the native terminal.
 func (m *Model) handleRawModeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch a, _ := m.keymap.Lookup(msg.String()); a {
 	case control.ActionQuit:
 		return m, tea.Quit
 	case control.ActionToggleZen:
 		return m, m.exitRawMode()
+	case control.ActionNextTab:
+		return m, m.rawNav(func() { m.gotoTab((m.active + 1) % len(m.tabs)) })
+	case control.ActionPrevTab:
+		return m, m.rawNav(func() { m.gotoTab((m.active - 1 + len(m.tabs)) % len(m.tabs)) })
+	case control.ActionNextChild:
+		return m, m.rawNav(func() { m.cycleChild(1) })
+	case control.ActionPrevChild:
+		return m, m.rawNav(func() { m.cycleChild(-1) })
+	case control.ActionHistBack:
+		return m, m.rawNav(m.histBack)
+	case control.ActionHistForward:
+		return m, m.rawNav(m.histForward)
 	default:
 		// every other action is swallowed in raw mode.
 	}
 	return m, nil
+}
+
+// rawTail returns the text to stream into native scrollback for a line belonging
+// to service/child, or ok=false when that line is outside the view the user has
+// tabbed to in zen mode. The rendering mirrors what the focused view's buffer
+// holds so a tab switch (rawFlush) and live streaming look identical: the all tab
+// gets the tinted, prefixed form; a service tab its merged line; a focused
+// container its bare line. merged is the buffer line for the service/all views,
+// raw the unprefixed container line.
+func (m *Model) rawTail(service, child, merged, raw string) (string, bool) {
+	tab := m.activeTab()
+	switch {
+	case tab == allTab:
+		prefix := serviceStyle(service).Render("["+service+"]") + " "
+		return serviceTintStyle(service).Render(prefix + merged), true
+	case tab != service:
+		return "", false
+	default:
+		if c := m.childFocus[tab]; c != "" {
+			if child != c {
+				return "", false
+			}
+			return raw, true
+		}
+		return merged, true
+	}
+}
+
+// rawNav applies a zen-mode focus change and, when the focused view actually
+// moved, flushes the newly focused view's backlog into native scrollback so the
+// user lands on content instead of waiting for the next line.
+func (m *Model) rawNav(nav func()) tea.Cmd {
+	before := m.viewKey()
+	nav()
+	if m.viewKey() == before {
+		return nil
+	}
+	return m.rawFlush()
+}
+
+// rawFlush pushes the focused view's buffered backlog into native scrollback,
+// headed by a marker naming the view, after a zen-mode tab or container switch.
+func (m *Model) rawFlush() tea.Cmd {
+	header := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("── " + m.rawFocusLabel() + " ──")
+	if buf := m.buffers[m.viewKey()]; len(buf) > 0 {
+		return tea.Println(header + "\n" + strings.Join(buf, "\n"))
+	}
+	return tea.Println(header)
+}
+
+// rawFocusLabel names the view zen mode is currently streaming: the tab, or
+// "tab · container" while a container is focused.
+func (m *Model) rawFocusLabel() string {
+	tab := m.activeTab()
+	if c := m.childFocus[tab]; c != "" {
+		return tab + " · " + c
+	}
+	return tab
 }
 
 // scrollStep is how many lines ↑/↓ move the viewport in scroll mode.
