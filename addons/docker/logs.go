@@ -3,6 +3,7 @@ package docker
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"os/exec"
 	"strings"
@@ -10,17 +11,21 @@ import (
 	"github.com/toaweme/log"
 )
 
-// logTailLines is how many recent lines each container replays on attach. "all"
-// streams the container's full history (docker's default) so nothing is lost on a
-// reconnect; set a number to bound the backlog.
-const logTailLines = "all"
-
 // runLogStream tails one compose service's logs and pipes each line into the per-child log channel.
 func (m *Manager) runLogStream(ctx context.Context, child string) {
+	tail := m.logTail
+	if tail == "" {
+		tail = "all"
+	}
+	// signpost a bounded backlog so the user knows this is recent context, not the
+	// container's whole life, and where the rest lives.
+	if tail != "all" {
+		m.emitLog(child, fmt.Sprintf("── last %s lines · full history: docker compose logs %s ──", tail, child))
+	}
 	//nolint:gosec // docker CLI args are derived from validated config, not arbitrary user input
 	cmd := exec.CommandContext(ctx, "docker", "compose",
 		"-p", m.project, "-f", m.composeFile,
-		"logs", "-f", "--no-color", "--no-log-prefix", "--tail", logTailLines, child,
+		"logs", "-f", "--no-color", "--no-log-prefix", "--tail", tail, child,
 	)
 	cmd.Dir = m.workDir
 	detach(cmd)

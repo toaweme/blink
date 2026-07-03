@@ -3,6 +3,7 @@ package docker
 
 import (
 	"path/filepath"
+	"strconv"
 
 	"github.com/toaweme/blink/core/addon"
 	"github.com/toaweme/blink/core/config"
@@ -43,6 +44,17 @@ func (r Runtime) Prepare(cfg config.Config, svc config.Service) (addon.Plan, err
 		wait = *dc.Wait
 	}
 
+	// resolve the attach backlog to a docker `--tail` value: a bounded default,
+	// an explicit count, or "all" (a non-positive config value) for full history.
+	tail := strconv.Itoa(config.DefaultDockerLogTail)
+	if dc.LogTail != nil {
+		if *dc.LogTail <= 0 {
+			tail = "all"
+		} else {
+			tail = strconv.Itoa(*dc.LogTail)
+		}
+	}
+
 	mgr := newManager(managerOpts{
 		Project:     proj,
 		ComposeFile: composeFile,
@@ -51,6 +63,7 @@ func (r Runtime) Prepare(cfg config.Config, svc config.Service) (addon.Plan, err
 		LogFilter:   append([]string(nil), dc.Logs...),
 		Wait:        wait,
 		StopOnExit:  dc.StopOnExit,
+		LogTail:     tail,
 	})
 
 	return addon.Plan{

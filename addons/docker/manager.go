@@ -21,6 +21,7 @@ type Manager struct {
 	logFilter   []string // services whose logs to stream (empty = every running container)
 	wait        bool
 	stopOnExit  bool
+	logTail     string // docker `--tail` value for the attach backlog: a count or "all"
 
 	events chan addon.ManagerEvent
 	// logCh is the single multiplexed stream of every followed container's output. Each line carries its container in LogLine.Child, so the TUI can filter by container without the supervisor knowing the set up front. Consumed via Logs("").
@@ -44,6 +45,7 @@ type managerOpts struct {
 	LogFilter   []string
 	Wait        bool
 	StopOnExit  bool
+	LogTail     string
 }
 
 func newManager(opts managerOpts) *Manager {
@@ -55,6 +57,7 @@ func newManager(opts managerOpts) *Manager {
 		logFilter:   opts.LogFilter,
 		wait:        opts.Wait,
 		stopOnExit:  opts.StopOnExit,
+		logTail:     opts.LogTail,
 		events:      make(chan addon.ManagerEvent, 32),
 		logCh:       make(chan addon.LogLine, 256),
 	}

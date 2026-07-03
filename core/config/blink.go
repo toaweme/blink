@@ -233,14 +233,25 @@ type DockerConfig struct {
 	// Default: false, so containers persist between runs and the next startup
 	// reuses warm databases. Pre-existing containers are never touched.
 	StopOnExit bool `yaml:"stop_on_exit,omitempty" json:"stop_on_exit,omitempty" toml:"stop_on_exit,omitempty"`
+	// LogTail bounds how many recent lines each container replays when blink
+	// attaches to a warm stack. Nil uses DefaultDockerLogTail; a value <= 0 means
+	// the full history ("all"). Bounded is the default because the in-memory
+	// buffer is capped anyway, so replaying an entire multi-month history just
+	// animates lines that are then trimmed.
+	LogTail *int `yaml:"log_tail,omitempty" json:"log_tail,omitempty" toml:"log_tail,omitempty"`
 }
+
+// DefaultDockerLogTail is the per-container backlog blink replays on attach when
+// DockerConfig.LogTail is unset: enough recent context to be useful without
+// dumping the container's whole history into the viewport.
+const DefaultDockerLogTail = 500
 
 // IsZero reports whether every field is its zero value, so the writer drops an
 // all-default docker block instead of serializing "docker: {}". yaml.v3 honors
 // this (IsZeroer) for omitempty.
 func (d DockerConfig) IsZero() bool {
 	return d.File == "" && d.Project == "" && len(d.Services) == 0 &&
-		len(d.Logs) == 0 && d.Wait == nil && !d.StopOnExit
+		len(d.Logs) == 0 && d.Wait == nil && !d.StopOnExit && d.LogTail == nil
 }
 
 // NodeConfig configures a `runtime: node` service. The runtime detects the
