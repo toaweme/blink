@@ -70,4 +70,9 @@ jobs:
           args: release --clean --release-notes=${{ runner.temp }}/notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PAT with write access to toaweme/homebrew-tap so goreleaser can
+          # push the updated formula. Set as an org or repo secret.
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          # PAT with write access to toaweme/scoop-bucket so goreleaser can
+          # push the updated Scoop manifest. Set as an org or repo secret.
+          SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
