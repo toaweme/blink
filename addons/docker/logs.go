@@ -10,11 +10,10 @@ import (
 	"github.com/toaweme/log"
 )
 
-// logTailLines is how many recent lines each container replays on attach. Bounds
-// the backlog so a reconnect to a long-running stack shows recent context instead
-// of dumping the entire history (which reads as a fresh boot), while still landing
-// the user on real logs rather than an empty screen.
-const logTailLines = "80"
+// logTailLines is how many recent lines each container replays on attach. "all"
+// streams the container's full history (docker's default) so nothing is lost on a
+// reconnect; set a number to bound the backlog.
+const logTailLines = "all"
 
 // runLogStream tails one compose service's logs and pipes each line into the per-child log channel.
 func (m *Manager) runLogStream(ctx context.Context, child string) {
