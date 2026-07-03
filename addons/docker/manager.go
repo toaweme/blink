@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/toaweme/log"
 
@@ -31,13 +30,7 @@ type Manager struct {
 	cancel  context.CancelFunc // cancels event + log streamers
 	started bool
 
-	// since anchors `docker compose logs --since` to when this blink session
-	// attached, so a reconnect to an already-running stack streams only new lines
-	// instead of replaying every container's full history (which reads as a fresh
-	// boot even though the containers never went down).
-	since string
-
-	// startedByUs is the set of compose services not running before blink invoked `up -d`, so Stop (under stopOnExit) only touches containers blink brought up. Always populated in Start; only read when stopOnExit is set.
+	// startedByUs is the set of compose services not running before blink invoked `up -d`. Populated in Start when stopOnExit is true, so Stop only touches containers blink brought up.
 	startedByUs map[string]bool
 }
 
@@ -86,21 +79,14 @@ func (m *Manager) Start(ctx context.Context) error {
 		return nil
 	}
 
-	// anchor log-follow to just before `up` so a cold boot still streams the
-	// containers' startup output, while a reconnect to a warm stack skips the
-	// backlog. A small skew back absorbs clock rounding between here and the
-	// container's own timestamps.
-	m.since = time.Now().Add(-2 * time.Second).UTC().Format(time.RFC3339)
-
-	// snapshot which services were already running before `up`. Feeds two things:
-	// Stop's startedByUs set (stopOnExit), and the warm-reconnect notice below -
-	// under --since the log stream stays silent for an already-up stack, so
-	// without an explicit line the view looks dead.
+	// snapshot which services were already running so Stop knows what not to touch on exit. Only needed when stopOnExit is set.
 	preRunning := map[string]bool{}
-	if rows, err := m.composeRows(ctx); err == nil {
-		for _, row := range rows {
-			if row.State == "running" {
-				preRunning[row.Service] = true
+	if m.stopOnExit {
+		if rows, err := m.composeRows(ctx); err == nil {
+			for _, row := range rows {
+				if row.State == "running" {
+					preRunning[row.Service] = true
+				}
 			}
 		}
 	}
@@ -116,29 +102,12 @@ func (m *Manager) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to run docker compose up: %w", err)
 	}
 
-	if rows, err := m.composeRows(ctx); err == nil {
-		running, started := 0, 0
-		m.startedByUs = map[string]bool{}
-		for _, row := range rows {
-			if !preRunning[row.Service] {
-				m.startedByUs[row.Service] = true
-			}
-			if row.State == "running" {
-				running++
-				if !preRunning[row.Service] {
-					started++
-				}
-			}
-		}
-		// nothing new started: blink reconnected to a stack that was already up.
-		// Say so, since the log stream won't (--since skips the backlog): a
-		// stack-level line for the merged and all-services views, plus a per
-		// container marker so focusing one quiet container isn't blank either.
-		if running > 0 && started == 0 {
-			m.emitLog("", fmt.Sprintf("stack already running, reconnected (%d containers)", running))
+	if m.stopOnExit {
+		if rows, err := m.composeRows(ctx); err == nil {
+			m.startedByUs = map[string]bool{}
 			for _, row := range rows {
-				if row.State == "running" {
-					m.emitLog(row.Service, "reconnected (already running)")
+				if !preRunning[row.Service] {
+					m.startedByUs[row.Service] = true
 				}
 			}
 		}
