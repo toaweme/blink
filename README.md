@@ -25,7 +25,7 @@ It detects what your project runs, so the common case needs zero config, and it 
 # go
 go install github.com/toaweme/blink/cmd/blink@latest
 
-# homebrew (macos/linux)
+# homebrew (macos)
 brew install toaweme/tap/blink
 
 # scoop (windows)

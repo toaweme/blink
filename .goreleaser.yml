@@ -58,22 +58,31 @@ signs:
     artifacts: checksum
     output: true
 
-brews:
+# Homebrew distributes prebuilt binaries as casks (formulae are meant to build
+# from source). `brew install toaweme/tap/blink` resolves the cask unchanged on
+# macOS; casks are macOS-only, so Linux users install via go/binary.
+homebrew_casks:
   - name: blink
-    directory: Formula
+    directory: Casks
     homepage: "https://github.com/toaweme/blink"
     description: "Live-reload supervisor for local dev"
-    license: "Apache-2.0"
-    # one shared tap holds a Formula/<project>.rb per project, so every toaweme
+    # one shared tap holds a Casks/<project>.rb per project, so every toaweme
     # tool installs as `brew install toaweme/tap/<project>`.
     repository:
       owner: toaweme
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    # don't push a formula for pre-release tags (e.g. v1.0.0-rc1).
+    # don't push a cask for pre-release tags (e.g. v1.0.0-rc1).
     skip_upload: auto
-    test: |
-      system "#{bin}/blink", "--help"
+    # the release binaries are unsigned, so macOS Gatekeeper quarantines them and
+    # blocks the first run. Strip the attribute on install to match the old
+    # formula's behavior (curl-fetched binaries were never quarantined).
+    hooks:
+      post:
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/blink"]
+          end
 
 scoops:
   - name: blink
