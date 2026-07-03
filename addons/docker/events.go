@@ -44,6 +44,7 @@ func (m *Manager) composeRows(ctx context.Context) ([]composePsRow, error) {
 	//nolint:gosec // docker CLI args are derived from validated config, not user input
 	cmd := exec.CommandContext(ctx, "docker", "compose", "-p", m.project, "-f", m.composeFile, "ps", "--format", "json")
 	cmd.Dir = m.workDir
+	detach(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -126,6 +127,7 @@ func (m *Manager) runEventStream(ctx context.Context) {
 		"--filter", "type=container",
 		"--format", "{{json .}}",
 	)
+	detach(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		log.Warn("docker events: stdout pipe", "error", err)

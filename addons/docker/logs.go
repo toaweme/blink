@@ -12,12 +12,20 @@ import (
 
 // runLogStream tails one compose service's logs and pipes each line into the per-child log channel.
 func (m *Manager) runLogStream(ctx context.Context, child string) {
+	args := []string{
+		"compose", "-p", m.project, "-f", m.composeFile,
+		"logs", "-f", "--no-color", "--no-log-prefix",
+	}
+	// stream only lines since this session attached, so a reconnect to a warm
+	// stack doesn't replay the container's whole history and look like a reboot.
+	if m.since != "" {
+		args = append(args, "--since", m.since)
+	}
+	args = append(args, child)
 	//nolint:gosec // docker CLI args are derived from validated config, not arbitrary user input
-	cmd := exec.CommandContext(ctx, "docker", "compose",
-		"-p", m.project, "-f", m.composeFile,
-		"logs", "-f", "--no-color", "--no-log-prefix", child,
-	)
+	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Dir = m.workDir
+	detach(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		log.Warn("docker logs: stdout pipe", "child", child, "error", err)

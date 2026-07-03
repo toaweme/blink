@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/toaweme/log"
 
@@ -29,6 +30,12 @@ type Manager struct {
 	mu      sync.Mutex
 	cancel  context.CancelFunc // cancels event + log streamers
 	started bool
+
+	// since anchors `docker compose logs --since` to when this blink session
+	// attached, so a reconnect to an already-running stack streams only new lines
+	// instead of replaying every container's full history (which reads as a fresh
+	// boot even though the containers never went down).
+	since string
 
 	// startedByUs is the set of compose services not running before blink invoked `up -d`. Populated in Start when stopOnExit is true, so Stop only touches containers blink brought up.
 	startedByUs map[string]bool
@@ -78,6 +85,12 @@ func (m *Manager) Start(ctx context.Context) error {
 	if m.started {
 		return nil
 	}
+
+	// anchor log-follow to just before `up` so a cold boot still streams the
+	// containers' startup output, while a reconnect to a warm stack skips the
+	// backlog. A small skew back absorbs clock rounding between here and the
+	// container's own timestamps.
+	m.since = time.Now().Add(-2 * time.Second).UTC().Format(time.RFC3339)
 
 	// snapshot which services were already running so Stop knows what not to touch on exit. Only needed when stopOnExit is set.
 	preRunning := map[string]bool{}
@@ -223,6 +236,7 @@ func (m *Manager) emitLog(child, line string) {
 func (m *Manager) runComposeBlocking(ctx context.Context, args ...string) error {
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Dir = m.workDir
+	detach(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		text := strings.TrimSpace(string(out))
