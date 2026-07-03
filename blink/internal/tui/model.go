@@ -314,6 +314,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleWindowSize(msg)
 	case LineMsg:
 		return m.handleLineMsg(msg)
+	case LinesMsg:
+		return m.handleLinesMsg(msg)
 	case StatusMsg:
 		return m.handleStatusMsg(msg)
 	case tickMsg:
@@ -392,7 +394,12 @@ func (m *Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) handleLineMsg(msg LineMsg) (tea.Model, tea.Cmd) {
+// ingestLine records one incoming line into the buffers and reports what the
+// active view still needs done: rawOut/rawOK is the zen-mode text to stream (if
+// the line belongs to the tabbed-to view), and affectsActive says the line landed
+// on the active tab so a caller can refresh the viewport. Splitting the
+// bookkeeping from the refresh lets a burst ingest many lines and render once.
+func (m *Model) ingestLine(msg LineMsg) (rawOut string, rawOK, affectsActive bool) {
 	line := msg.Line
 	if msg.Child != "" {
 		// raw line into the per-container buffer (for a focused tab); the
@@ -403,15 +410,57 @@ func (m *Model) handleLineMsg(msg LineMsg) (tea.Model, tea.Cmd) {
 	}
 	m.appendLine(msg.Service, line)
 	if m.rawMode {
+		out, ok := m.rawTail(msg.Service, msg.Child, line, msg.Line)
+		return out, ok, false
+	}
+	return "", false, m.activeTab() == allTab || m.activeTab() == msg.Service
+}
+
+func (m *Model) handleLineMsg(msg LineMsg) (tea.Model, tea.Cmd) {
+	out, rawOK, affects := m.ingestLine(msg)
+	if m.rawMode {
 		// stream only the view the user has tabbed to into the native terminal,
-		// so zen mode can filter to one service or container while still handing
-		// the screen back for scroll and select.
-		if out, ok := m.rawTail(msg.Service, msg.Child, line, msg.Line); ok {
+		// so zen mode can filter while still handing the screen back for select.
+		if rawOK {
 			return m, tea.Println(out)
 		}
 		return m, nil
 	}
-	if m.activeTab() == allTab || m.activeTab() == msg.Service {
+	if affects {
+		m.refreshViewportFollow()
+	}
+	return m, nil
+}
+
+// handleLinesMsg ingests a coalesced burst in one shot: every line updates its
+// buffers, but the viewport is refreshed at most once (or, in zen mode, the
+// matching lines are streamed as a single Println), so a flood lands the user on
+// the tail instantly instead of animating hundreds of scroll steps.
+func (m *Model) handleLinesMsg(msg LinesMsg) (tea.Model, tea.Cmd) {
+	if m.rawMode {
+		var b strings.Builder
+		for _, ln := range msg.Lines {
+			out, ok, _ := m.ingestLine(ln)
+			if !ok {
+				continue
+			}
+			if b.Len() > 0 {
+				b.WriteByte('\n')
+			}
+			b.WriteString(out)
+		}
+		if b.Len() > 0 {
+			return m, tea.Println(b.String())
+		}
+		return m, nil
+	}
+	affects := false
+	for _, ln := range msg.Lines {
+		if _, _, a := m.ingestLine(ln); a {
+			affects = true
+		}
+	}
+	if affects {
 		m.refreshViewportFollow()
 	}
 	return m, nil

@@ -125,11 +125,40 @@ func forwardEvents(app *tui.App, sub output.Subscription) {
 	}
 }
 
+// maxLogBatch caps how many lines one coalesced burst carries, so a huge attach
+// backlog is split into a handful of messages rather than one enormous slice.
+const maxLogBatch = 2048
+
 // forwardLogs posts log lines from the supervisor's hub into the TUI. All
 // captured streams (shell-runtime, docker compose, etc.) share one channel.
+// It coalesces whatever is already queued into a single LinesMsg so a flood (a
+// container's attach backlog) is rendered once instead of animating one scroll
+// step per line; a steady trickle still ships one line at a time.
 func forwardLogs(app *tui.App, sub output.Subscription) {
-	for ln := range sub.Logs {
-		app.Send(tui.LineMsg{Service: ln.Service, Child: ln.Child, Line: ln.Line})
+	for {
+		first, ok := <-sub.Logs
+		if !ok {
+			return
+		}
+		batch := []tui.LineMsg{{Service: first.Service, Child: first.Child, Line: first.Line}}
+		for len(batch) < maxLogBatch {
+			select {
+			case ln, ok := <-sub.Logs:
+				if !ok {
+					app.Send(tui.LinesMsg{Lines: batch})
+					return
+				}
+				batch = append(batch, tui.LineMsg{Service: ln.Service, Child: ln.Child, Line: ln.Line})
+				continue
+			default:
+			}
+			break
+		}
+		if len(batch) == 1 {
+			app.Send(batch[0])
+		} else {
+			app.Send(tui.LinesMsg{Lines: batch})
+		}
 	}
 }
 

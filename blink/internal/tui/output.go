@@ -8,6 +8,13 @@ type LineMsg struct {
 	Line    string
 }
 
+// LinesMsg carries a coalesced burst of lines so a flood (e.g. a container's
+// attach backlog) is ingested and rendered once, not once per line. The forwarder
+// batches whatever is already queued into a single message.
+type LinesMsg struct {
+	Lines []LineMsg
+}
+
 // StatusMsg announces a service status change. Child is non-empty for nested
 // processes managed by a runtime (e.g. docker compose containers).
 type StatusMsg struct {
