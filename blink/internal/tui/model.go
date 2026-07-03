@@ -1158,8 +1158,8 @@ func (m *Model) renderFooter() string {
 	var left string
 	if m.cursorMode {
 		left = m.renderCursorHints(dim, val)
-	} else if key := m.keyFor(control.ActionCursorMode); key != "" {
-		left = val.Render(key) + dim.Render(" export lines")
+	} else {
+		left = m.renderScrollHints(dim, val)
 	}
 	// container switcher hint, only on a tab that has children (docker). In the
 	// footer so it never competes with the header tab chips.
@@ -1236,6 +1236,32 @@ func fitLabel(s string, w int) string {
 
 // renderCursorHints renders the selection-mode shortcut strip shown while cursor
 // mode is active. Keys come from the live keymap; an unbound action is dropped.
+// renderScrollHints is the footer's left hint row in scroll mode: the verbs that
+// aren't already visible from the tab chips. Restart is dropped on the all-tab,
+// where it is a no-op.
+func (m *Model) renderScrollHints(dim, val lipgloss.Style) string {
+	hints := []struct {
+		action control.Action
+		label  string
+	}{
+		{control.ActionCursorMode, "export lines"},
+		{control.ActionRestart, "restart"},
+		{control.ActionCommandCenter, "help"},
+	}
+	var parts []string
+	for _, h := range hints {
+		if h.action == control.ActionRestart && m.activeTab() == allTab {
+			continue
+		}
+		key := m.keyFor(h.action)
+		if key == "" {
+			continue
+		}
+		parts = append(parts, val.Render(key)+dim.Render(" "+h.label))
+	}
+	return strings.Join(parts, dim.Render("  ·  "))
+}
+
 func (m *Model) renderCursorHints(dim, val lipgloss.Style) string {
 	hints := []struct {
 		action control.Action
