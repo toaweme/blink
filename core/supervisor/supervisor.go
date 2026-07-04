@@ -488,17 +488,26 @@ func (s *Supervisor) lifecycle(st *serviceState, boot bool) {
 	s.setStatus(st, StatusRunning)
 	go func() {
 		err := runner.Run()
+		// once Run returns, drop our runner slot so the next restart's stopRunner
+		// cannot signal this dead (and possibly pid-reused) process group. If a
+		// restart or stop already swapped in a different runner, that run now owns
+		// the service, so this stale goroutine must not touch its status.
+		st.mu.Lock()
+		superseded := st.runner != runner
+		if !superseded {
+			st.runner = nil
+		}
+		st.mu.Unlock()
+		if superseded {
+			return
+		}
 		if err != nil {
-			if s.Status(st.svc.Name) == StatusRunning {
-				s.setStatusErr(st, StatusCrashed, err)
-				log.Error("process exited unexpectedly", "service", st.svc.Name, "error", err)
-			}
+			s.setStatusErr(st, StatusCrashed, err)
+			log.Error("process exited unexpectedly", "service", st.svc.Name, "error", err)
 			return
 		}
 		if main.Service {
-			if s.Status(st.svc.Name) == StatusRunning {
-				s.setStatus(st, StatusExited)
-			}
+			s.setStatus(st, StatusExited)
 			return
 		}
 		_ = s.runChain(st, st.svc.Commands.Run.After)
