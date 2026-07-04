@@ -15,10 +15,10 @@ type App struct {
 	model *Model
 }
 
-// WithZen starts the TUI in zen / raw mode when on is true. Same end-state
-// as pressing z at runtime, so the z exit path works unchanged.
+// WithZen starts the TUI in zen (chromeless) mode when on is true. Same
+// end-state as pressing z at runtime, so the z toggle works unchanged.
 func (m *Model) WithZen(on bool) *Model {
-	m.rawMode = on
+	m.chromeless = on
 	return m
 }
 

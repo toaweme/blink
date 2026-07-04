@@ -30,25 +30,25 @@ func Test_LinesMsg_IngestsWholeBurst(t *testing.T) {
 	}
 }
 
-// Test_LinesMsg_ZenStreamsMatchingOnly checks that in zen mode a burst streams a
-// single joined Println of only the lines belonging to the tabbed-to view.
-func Test_LinesMsg_ZenStreamsMatchingOnly(t *testing.T) {
+// Test_LinesMsg_ZenBuffersAll checks that zen (chromeless) mode does not change
+// ingestion: a burst still lands every line in its buffer, since zen only hides
+// the chrome and never filters output.
+func Test_LinesMsg_ZenBuffersAll(t *testing.T) {
 	m := NewModel([]string{"web", "docker"}, nil)
-	m.rawMode = true
-	m.active = 1 // "web" service tab: only web lines should stream
+	m.chromeless = true
+	m.active = 1 // "web" service tab
 
 	burst := LinesMsg{Lines: []LineMsg{
 		{Service: "web", Line: "web up"},
 		{Service: "docker", Child: "db", Line: "db up"},
 		{Service: "web", Line: "web ready"},
 	}}
-	_, cmd := m.handleLinesMsg(burst)
-	if cmd == nil {
-		t.Fatal("expected a Println cmd for the matching web lines, got nil")
-	}
-	// both web lines still land in the web buffer; the docker line is filtered
-	// from the stream but still buffered under docker.
+	m.handleLinesMsg(burst)
+
 	if web := m.buffers["web"]; len(web) != 2 {
 		t.Fatalf("web buffer = %v, want 2 lines", web)
+	}
+	if db := m.buffers["docker"+childSep+"db"]; len(db) != 1 {
+		t.Fatalf("db buffer = %v, want 1 line", db)
 	}
 }

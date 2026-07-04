@@ -81,11 +81,12 @@ type Model struct {
 	// helpOpen is true while the command-center/help modal is visible.
 	helpOpen bool
 
-	// rawMode (toggled with z) tears down the TUI overlay: bubbletea exits
-	// alt-screen, mouse capture is disabled, View() returns empty, and new lines
-	// stream via tea.Println into the native scrollback, where native scroll and
-	// mouse-select work.
-	rawMode bool
+	// chromeless (toggled with z) is zen mode: the TUI stays in the alt-screen but
+	// hides its chrome - View() skips the tab header and footer so the log viewport
+	// gets the full terminal height. Navigation keys keep working; only the hints
+	// are gone. Quitting restores the pre-blink terminal cleanly (alt-screen), so
+	// zen never pollutes the user's scrollback.
+	chromeless bool
 
 	// animation
 	spinner    spinner.Model
@@ -302,17 +303,10 @@ func (m *Model) cycleChild(delta int) {
 }
 
 // Init starts the spinner and the heartbeat tick that drive the soft animations.
-// When launched straight into zen (`-z`), it also leaves the alt-screen and
-// releases the mouse right away: the program is created with WithAltScreen, and
-// tea.Println (how raw mode streams) is dropped while the alt-screen is active, so
-// without this a `-z` start is a blank screen swallowing every log line. Toggling
-// zen at runtime goes through enterRawMode, which already does this.
+// Zen mode (`-z`) stays in the alt-screen and only hides the chrome, so there is
+// nothing screen-related to sequence here.
 func (m *Model) Init() tea.Cmd {
-	cmds := []tea.Cmd{m.spinner.Tick, tickCmd()}
-	if m.rawMode {
-		cmds = append(cmds, tea.ExitAltScreen, tea.DisableMouse)
-	}
-	return tea.Batch(cmds...)
+	return tea.Batch(m.spinner.Tick, tickCmd())
 }
 
 // Update routes incoming messages to per-type handlers. Heavy logic lives in
@@ -330,11 +324,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.pulsePhase++
 		return m, tickCmd()
-	case refreshMsg:
-		// fired after exitRawMode reattaches the alt-screen; restore the
-		// pre-zen viewport offset.
-		m.restoreScroll()
-		return m, nil
 	case WatchStatsMsg:
 		m.watchFiles = msg.Files
 		m.watchDirs = msg.Dirs
@@ -403,12 +392,10 @@ func (m *Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// ingestLine records one incoming line into the buffers and reports what the
-// active view still needs done: rawOut/rawOK is the zen-mode text to stream (if
-// the line belongs to the tabbed-to view), and affectsActive says the line landed
-// on the active tab so a caller can refresh the viewport. Splitting the
-// bookkeeping from the refresh lets a burst ingest many lines and render once.
-func (m *Model) ingestLine(msg LineMsg) (rawOut string, rawOK, affectsActive bool) {
+// ingestLine records one incoming line into the buffers and reports whether the
+// line landed on the active view, so a caller can refresh the viewport. Splitting
+// the bookkeeping from the refresh lets a burst ingest many lines and render once.
+func (m *Model) ingestLine(msg LineMsg) (affectsActive bool) {
 	line := msg.Line
 	if msg.Child != "" {
 		// raw line into the per-container buffer (for a focused tab); the
@@ -418,54 +405,23 @@ func (m *Model) ingestLine(msg LineMsg) (rawOut string, rawOK, affectsActive boo
 		line = lipgloss.NewStyle().Faint(true).Render("["+msg.Child+"]") + " " + line
 	}
 	m.appendLine(msg.Service, line)
-	if m.rawMode {
-		out, ok := m.rawTail(msg.Service, msg.Child, line, msg.Line)
-		return out, ok, false
-	}
-	return "", false, m.activeTab() == allTab || m.activeTab() == msg.Service
+	return m.activeTab() == allTab || m.activeTab() == msg.Service
 }
 
 func (m *Model) handleLineMsg(msg LineMsg) (tea.Model, tea.Cmd) {
-	out, rawOK, affects := m.ingestLine(msg)
-	if m.rawMode {
-		// stream only the view the user has tabbed to into the native terminal,
-		// so zen mode can filter while still handing the screen back for select.
-		if rawOK {
-			return m, tea.Println(out)
-		}
-		return m, nil
-	}
-	if affects {
+	if m.ingestLine(msg) {
 		m.refreshViewportFollow()
 	}
 	return m, nil
 }
 
 // handleLinesMsg ingests a coalesced burst in one shot: every line updates its
-// buffers, but the viewport is refreshed at most once (or, in zen mode, the
-// matching lines are streamed as a single Println), so a flood lands the user on
-// the tail instantly instead of animating hundreds of scroll steps.
+// buffers, but the viewport is refreshed at most once, so a flood lands the user
+// on the tail instantly instead of animating hundreds of scroll steps.
 func (m *Model) handleLinesMsg(msg LinesMsg) (tea.Model, tea.Cmd) {
-	if m.rawMode {
-		var b strings.Builder
-		for _, ln := range msg.Lines {
-			out, ok, _ := m.ingestLine(ln)
-			if !ok {
-				continue
-			}
-			if b.Len() > 0 {
-				b.WriteByte('\n')
-			}
-			b.WriteString(out)
-		}
-		if b.Len() > 0 {
-			return m, tea.Println(b.String())
-		}
-		return m, nil
-	}
 	affects := false
 	for _, ln := range msg.Lines {
-		if _, _, a := m.ingestLine(ln); a {
+		if m.ingestLine(ln) {
 			affects = true
 		}
 	}
@@ -511,38 +467,28 @@ func (m *Model) handleStatusMsg(msg StatusMsg) (tea.Model, tea.Cmd) {
 		m.appendLine(msg.Service, lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render("error: "+msg.Err.Error()))
 	}
 	label := "── " + msg.Status + " ──"
-	childLabel := ""
 	if msg.Child != "" {
 		// surface the container so it joins the in-tab ring before its first log
 		// line, and give its focused view the bare status marker.
 		m.noteChild(msg.Service, msg.Child)
-		childLabel = lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("── " + msg.Status + " ──")
+		childLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("── " + msg.Status + " ──")
 		m.appendChildLine(msg.Service, msg.Child, childLabel)
 		label = "── " + msg.Child + ": " + msg.Status + " ──"
 	}
 	labelLine := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render(label)
 	m.appendLine(msg.Service, labelLine)
-	if m.rawMode {
-		if out, ok := m.rawTail(msg.Service, msg.Child, labelLine, childLabel); ok {
-			return m, tea.Println(out)
-		}
-		return m, nil
-	}
 	if m.activeTab() == allTab || m.activeTab() == msg.Service {
 		m.refreshViewportFollow()
 	}
 	return m, nil
 }
 
-// handleKey is the top-level key dispatcher. Modal overlays (command-center,
-// raw-mode) get first refusal; anything they don't consume falls through to
-// the global keymap.
+// handleKey is the top-level key dispatcher. The command-center modal gets first
+// refusal; anything it doesn't consume falls through to the global keymap, which
+// stays fully active in zen mode (only the chrome is hidden, not the keys).
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.helpOpen {
 		return m.handleCommandCenterKey(msg)
-	}
-	if m.rawMode {
-		return m.handleRawModeKey(msg)
 	}
 	return m.handleGlobalKey(msg)
 }
@@ -584,108 +530,6 @@ func (m *Model) handleCommandCenterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
-}
-
-// handleRawModeKey is the minimal keymap active while the TUI has handed the
-// screen back to the user. Quit and z (exit zen) respond, plus tab and container
-// navigation so zen mode can filter which service/container streams; everything
-// else passes through to the native terminal.
-func (m *Model) handleRawModeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch a, _ := m.keymap.Lookup(msg.String()); a {
-	case control.ActionQuit:
-		return m, tea.Quit
-	case control.ActionToggleZen:
-		return m, m.exitRawMode()
-	case control.ActionNextTab:
-		return m, m.rawNav(func() { m.gotoTab((m.active + 1) % len(m.tabs)) })
-	case control.ActionPrevTab:
-		return m, m.rawNav(func() { m.gotoTab((m.active - 1 + len(m.tabs)) % len(m.tabs)) })
-	case control.ActionNextChild:
-		return m, m.rawNav(func() { m.cycleChild(1) })
-	case control.ActionPrevChild:
-		return m, m.rawNav(func() { m.cycleChild(-1) })
-	case control.ActionHistBack:
-		return m, m.rawNav(m.histBack)
-	case control.ActionHistForward:
-		return m, m.rawNav(m.histForward)
-	default:
-		// every other action is swallowed in raw mode.
-	}
-	return m, nil
-}
-
-// rawTail returns the text to stream into native scrollback for a line belonging
-// to service/child, or ok=false when that line is outside the view the user has
-// tabbed to in zen mode. The rendering mirrors what the focused view's buffer
-// holds so a tab switch (rawFlush) and live streaming look identical: the all tab
-// gets the tinted, prefixed form; a service tab its merged line; a focused
-// container its bare line. merged is the buffer line for the service/all views,
-// raw the unprefixed container line.
-func (m *Model) rawTail(service, child, merged, raw string) (string, bool) {
-	tab := m.activeTab()
-	switch {
-	case tab == allTab:
-		prefix := serviceStyle(service).Render("["+service+"]") + " "
-		return serviceTintStyle(service).Render(prefix + merged), true
-	case tab != service:
-		return "", false
-	default:
-		if c := m.childFocus[tab]; c != "" {
-			if child != c {
-				return "", false
-			}
-			return raw, true
-		}
-		return merged, true
-	}
-}
-
-// rawNav applies a zen-mode focus change and, when the focused view actually
-// moved, flushes the newly focused view's backlog into native scrollback so the
-// user lands on content instead of waiting for the next line.
-func (m *Model) rawNav(nav func()) tea.Cmd {
-	before := m.viewKey()
-	nav()
-	if m.viewKey() == before {
-		return nil
-	}
-	return m.rawFlush()
-}
-
-// rawFlush pushes the focused view's recent backlog into native scrollback,
-// headed by a marker naming the view, after a zen-mode tab or container switch.
-// Only the last screenful is flushed: the whole buffer is up to 5000 lines and
-// re-dumping it on every switch buries the terminal, so this lands the user on
-// recent context and leaves older history to their native scrollback.
-func (m *Model) rawFlush() tea.Cmd {
-	header := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("── " + m.rawFocusLabel() + " ──")
-	buf := m.buffers[m.viewKey()]
-	if n := m.zenFlushLines(); len(buf) > n {
-		buf = buf[len(buf)-n:]
-	}
-	if len(buf) > 0 {
-		return tea.Println(header + "\n" + strings.Join(buf, "\n"))
-	}
-	return tea.Println(header)
-}
-
-// zenFlushLines is how many trailing lines a zen view switch replays: a screenful
-// from the last window size, or a sane default before the first resize arrives.
-func (m *Model) zenFlushLines() int {
-	if m.height > 1 {
-		return m.height - 1
-	}
-	return 40
-}
-
-// rawFocusLabel names the view zen mode is currently streaming: the tab, or
-// "tab · container" while a container is focused.
-func (m *Model) rawFocusLabel() string {
-	tab := m.activeTab()
-	if c := m.childFocus[tab]; c != "" {
-		return tab + " · " + c
-	}
-	return tab
 }
 
 // scrollStep is how many lines ↑/↓ move the viewport in scroll mode.
@@ -774,7 +618,8 @@ func (m *Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case control.ActionToggleZen:
-		return m, m.enterRawMode()
+		m.toggleChromeless()
+		return m, nil
 	case control.ActionNextTab:
 		m.gotoTab((m.active + 1) % len(m.tabs))
 		return m, nil
@@ -890,36 +735,21 @@ func (m *Model) handleClearAll() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// enterRawMode tears down the bubbletea overlay so the user can use native
-// scroll and mouse-select. Order matters: tea.Println is dropped while the
-// alt-screen is active, so this sequences ExitAltScreen, DisableMouse,
-// Println(buffer) instead of batching.
-func (m *Model) enterRawMode() tea.Cmd {
-	m.saveScroll()
-	m.rawMode = true
-	// release mouse capture so native scroll and select work.
-	cmds := []tea.Cmd{tea.ExitAltScreen, tea.DisableMouse}
-	// flush the current buffer into the native scrollback so the user lands on
-	// real content instead of an empty screen.
-	if buf := m.buffers[m.viewKey()]; len(buf) > 0 {
-		cmds = append(cmds, tea.Println(strings.Join(buf, "\n")))
+// toggleChromeless flips zen mode: the alt-screen stays put, but the tab header
+// and footer are hidden (or shown again), so the log viewport reclaims that
+// height. The viewport is resized and re-rendered in place so the active tab's
+// scroll position survives the toggle.
+func (m *Model) toggleChromeless() {
+	m.chromeless = !m.chromeless
+	if !m.ready {
+		return
 	}
-	return tea.Sequence(cmds...)
+	m.saveScroll()
+	w, h := m.viewportSize()
+	m.vp.Width = w
+	m.vp.Height = h
+	m.restoreScroll()
 }
-
-// exitRawMode brings the overlay back and re-captures the mouse.
-func (m *Model) exitRawMode() tea.Cmd {
-	m.rawMode = false
-	// re-capture the mouse (cell motion is on for the whole TUI lifetime).
-	cmds := []tea.Cmd{tea.EnterAltScreen, tea.EnableMouseCellMotion}
-	// schedule a refresh after re-entering the alt screen.
-	cmds = append(cmds, func() tea.Msg { return refreshMsg{} })
-	return tea.Batch(cmds...)
-}
-
-// refreshMsg is dispatched after re-entering alt-screen so the next Update tick
-// re-renders the active tab.
-type refreshMsg struct{}
 
 // saveScroll snapshots where the active tab's viewport is parked.
 func (m *Model) saveScroll() {
@@ -965,7 +795,12 @@ func (m *Model) restoreScroll() {
 // accounting for the header, footer, and the one-line top padding View()
 // prepends.
 func (m *Model) viewportSize() (int, int) {
-	h := m.height - lipgloss.Height(m.renderTabs()) - lipgloss.Height(m.renderFooter()) - topPaddingLines
+	// zen mode hides the header and footer, so the viewport takes the whole
+	// terminal height (the top padding still applies).
+	h := m.height - topPaddingLines
+	if !m.chromeless {
+		h -= lipgloss.Height(m.renderTabs()) + lipgloss.Height(m.renderFooter())
+	}
 	if h < 1 {
 		h = 1
 	}
@@ -976,19 +811,18 @@ func (m *Model) viewportSize() (int, int) {
 // A const so every height calculation that subtracts chrome stays consistent.
 const topPaddingLines = 1
 
-// View renders the current frame: tab header, log viewport, and footer. Returns
-// empty in raw mode (the native terminal owns the screen).
+// View renders the current frame: tab header, log viewport, and footer. In zen
+// mode the header and footer are dropped so the viewport fills the screen; the
+// alt-screen stays active either way, so quitting restores the user's terminal.
 func (m *Model) View() string {
 	if !m.ready {
 		return "starting blink..."
 	}
-	// raw mode: yield the screen so native scroll and mouse-select work. New
-	// lines are pushed via tea.Println into the main screen buffer.
-	if m.rawMode {
-		return ""
-	}
 	if m.helpOpen {
 		return m.renderHelpDialog()
+	}
+	if m.chromeless {
+		return strings.Repeat("\n", topPaddingLines) + m.vp.View()
 	}
 	footer := m.renderFooter()
 	return strings.Repeat("\n", topPaddingLines) + m.renderTabs() + "\n" + m.vp.View() + "\n" + footer
