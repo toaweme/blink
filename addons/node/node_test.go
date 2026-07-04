@@ -123,3 +123,70 @@ func Test_Node_PrepareExtensions(t *testing.T) {
 		}
 	}
 }
+
+// Test_Node_PrepareReloadScoping asserts a self-reloading dev server (vite) is
+// watched only for package.json + node_modules removal, so blink never restarts
+// it over a source edit its HMR already handles, while a plain node server keeps
+// the broad source watch.
+func Test_Node_PrepareReloadScoping(t *testing.T) {
+	tests := []struct {
+		name        string
+		devScript   string
+		wantInclude []string // nil => none, keep broad Extensions
+	}{
+		{
+			name:        "vite dev server scopes to package.json",
+			devScript:   "vite dev --port 3000",
+			wantInclude: []string{"package.json"},
+		},
+		{
+			name:        "nodemon self-reloads too",
+			devScript:   "nodemon server.js",
+			wantInclude: []string{"package.json"},
+		},
+		{
+			name:      "plain node server keeps broad source watch",
+			devScript: "node server.js",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			pkg := `{"scripts":{"dev":"` + tt.devScript + `"}}`
+			if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(pkg), 0o600); err != nil {
+				t.Fatalf("write package.json: %v", err)
+			}
+
+			plan, err := Runtime{}.Prepare(config.Config{DirRoot: dir}, config.Service{Name: "web", Dir: "."})
+			if err != nil {
+				t.Fatalf("Prepare: %v", err)
+			}
+			fs := plan.Defaults.Fs
+
+			if !equalStrings(fs.Include, tt.wantInclude) {
+				t.Fatalf("Fs.Include = %v, want %v", fs.Include, tt.wantInclude)
+			}
+			if len(tt.wantInclude) > 0 {
+				// strict include: source extensions must not be watched.
+				if len(fs.Extensions) != 0 {
+					t.Fatalf("Fs.Extensions = %v, want none for a self-reloading dev server", fs.Extensions)
+				}
+			} else if len(fs.Extensions) == 0 {
+				t.Fatal("Fs.Extensions empty, want broad source watch for a plain node server")
+			}
+		})
+	}
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

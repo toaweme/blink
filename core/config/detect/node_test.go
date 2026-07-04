@@ -95,6 +95,50 @@ func Test_Node_Detect(t *testing.T) {
 	}
 }
 
+// Test_Node_DetectReloadScoping asserts the generated service scopes reload to
+// out-of-scope changes for a self-reloading dev server, and keeps the plain
+// full-source reload otherwise.
+func Test_Node_DetectReloadScoping(t *testing.T) {
+	tests := []struct {
+		name        string
+		pkgJSON     string
+		wantInclude []string
+	}{
+		{
+			name:        "vite dev server scopes to package.json",
+			pkgJSON:     `{"name":"web","scripts":{"dev":"vite dev"}}`,
+			wantInclude: []string{"package.json"},
+		},
+		{
+			name:    "plain node server keeps full source reload",
+			pkgJSON: `{"name":"api","scripts":{"dev":"node server.js"}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(tt.pkgJSON), 0o600); err != nil {
+				t.Fatalf("write package.json: %v", err)
+			}
+			got, err := nodeDetector{}.Detect(dir)
+			if err != nil {
+				t.Fatalf("Detect: %v", err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("got %d detected, want 1", len(got))
+			}
+			svc := got[0].Service
+			if !svc.Reload.Reload {
+				t.Fatal("Reload = false, want true")
+			}
+			if !equalStrings(svc.Fs.Include, tt.wantInclude) {
+				t.Fatalf("Fs.Include = %v, want %v", svc.Fs.Include, tt.wantInclude)
+			}
+		})
+	}
+}
+
 func Test_Node_DetectNoPackageJSON(t *testing.T) {
 	got, err := nodeDetector{}.Detect(t.TempDir())
 	if err != nil {

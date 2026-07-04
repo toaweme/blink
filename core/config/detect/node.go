@@ -50,14 +50,23 @@ func (nodeDetector) Detect(dir string) ([]Detected, error) {
 		label = name + " (" + fw + ")"
 	}
 
+	script := pickScript(pkg.Scripts)
 	svc := config.Service{
 		Name:    name,
 		Runtime: "node",
 		Node: &config.NodeConfig{
-			Script:         pickScript(pkg.Scripts),
+			Script:         script,
 			PackageManager: config.NodePackageManager(dir),
 		},
 		Reload: config.Reload{Reload: true},
+	}
+	// a dev server that owns its own live reload (vite, next, nodemon, ...) is
+	// scoped to out-of-scope changes only, so blink never restarts it over an
+	// edit its HMR already handles. Written explicitly so the generated
+	// blink.yml is self-documenting; the node runtime applies the same default.
+	if config.NodeDevCommandSelfReloads(pkg.Scripts[script]) {
+		svc.Fs.Include = []string{"package.json"}
+		svc.Reload.ReloadOnDelete = []string{"node_modules"}
 	}
 	return []Detected{{
 		Service: svc,
