@@ -5,6 +5,13 @@ All notable changes to this project are documented here, newest first.
 Entries are generated from [Conventional Commits](https://www.conventionalcommits.org)
 and grouped by change type. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-07-05
+
+### Fixes
+
+- Hide all-tab for single-service sessions by [@iberflow](https://github.com/iberflow) in [4d2d297](https://github.com/toaweme/blink/commit/4d2d2979a4a3f03c4999cf1f6c48b713d6c5a853).
+- Node script detection by [@iberflow](https://github.com/iberflow) in [cd1e884](https://github.com/toaweme/blink/commit/cd1e884cf9556dd9f0eb3205db45296c45d4c558).
+
 ## [0.2.0] - 2026-07-05
 
 ### Features
@@ -94,6 +101,7 @@ and grouped by change type. This project adheres to [Semantic Versioning](https:
 - Bump deps by [@iberflow](https://github.com/iberflow) in [8678e08](https://github.com/toaweme/blink/commit/8678e08f4f4027ca1d983fa388704052e276a35e).
 - Freeze go 1.26.4 by [@iberflow](https://github.com/iberflow) in [c846eee](https://github.com/toaweme/blink/commit/c846eeefe2e0ed9afc11748e172443acdfacc85e).
 
+[0.2.1]: https://github.com/toaweme/blink/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/toaweme/blink/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/toaweme/blink/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/toaweme/blink/compare/v0.1.1...v0.1.2
