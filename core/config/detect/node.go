@@ -45,12 +45,19 @@ func (nodeDetector) Detect(dir string) ([]Detected, error) {
 		name = filepath.Base(dir)
 	}
 
+	script, ok := pickScript(pkg.Scripts)
+	if !ok {
+		// a package.json with no dev or start script has nothing for blink to
+		// run as a service, so it is a no-match rather than a phantom `npm run
+		// dev` that would fail the moment it boots.
+		return nil, nil
+	}
+
 	label := name + " (node)"
 	if fw := detectFramework(pkg); fw != "" {
 		label = name + " (" + fw + ")"
 	}
 
-	script := pickScript(pkg.Scripts)
 	svc := config.Service{
 		Name:    name,
 		Runtime: "node",
@@ -76,15 +83,16 @@ func (nodeDetector) Detect(dir string) ([]Detected, error) {
 	}}, nil
 }
 
-// pickScript prefers "dev", then "start"; empty when neither exists (the node
-// runtime defaults to "dev" itself, so an empty value is harmless).
-func pickScript(scripts map[string]string) string {
+// pickScript prefers "dev", then "start", reporting which it found. The false
+// return means the package.json defines neither, so there is no dev command to
+// run and the caller must not fabricate one.
+func pickScript(scripts map[string]string) (string, bool) {
 	for _, name := range []string{"dev", "start"} {
 		if _, ok := scripts[name]; ok {
-			return name
+			return name, true
 		}
 	}
-	return ""
+	return "", false
 }
 
 // detectFramework returns a recognized dev-server framework from the merged

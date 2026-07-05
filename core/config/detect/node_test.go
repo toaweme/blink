@@ -149,6 +149,33 @@ func Test_Node_DetectNoPackageJSON(t *testing.T) {
 	}
 }
 
+func Test_Node_DetectNoDevScript(t *testing.T) {
+	tests := []struct {
+		name    string
+		pkgJSON string
+	}{
+		{"empty object", `{}`},
+		{"no scripts section", `{"name":"lib"}`},
+		{"scripts without dev or start", `{"name":"lib","scripts":{"build":"tsc","test":"vitest"}}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(tt.pkgJSON), 0o600); err != nil {
+				t.Fatalf("write package.json: %v", err)
+			}
+			got, err := nodeDetector{}.Detect(dir)
+			if err != nil {
+				t.Fatalf("Detect: %v", err)
+			}
+			if got != nil {
+				t.Fatalf("got %v, want nil for a package.json with no dev/start script", got)
+			}
+		})
+	}
+}
+
 func Test_Node_DetectMalformedPackageJSON(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte("{not json"), 0o600); err != nil {
