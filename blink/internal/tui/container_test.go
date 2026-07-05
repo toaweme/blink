@@ -8,7 +8,7 @@ import "testing"
 func feedDocker(t *testing.T, lines []LineMsg) *Model {
 	t.Helper()
 	m := NewModel([]string{"docker"}, nil)
-	m.active = 1 // tabs = [all, docker]
+	m.active = 0 // lone service: no all-tab, tabs = [docker]
 	if m.activeTab() != "docker" {
 		t.Fatalf("active tab = %q, want docker", m.activeTab())
 	}
@@ -125,7 +125,7 @@ func Test_TabHistory_BackForward(t *testing.T) {
 
 func Test_Container_CycleNoopWithoutChildren(t *testing.T) {
 	m := NewModel([]string{"web"}, nil)
-	m.active = 1 // plain shell service, no children
+	m.active = 0 // lone service: no all-tab, plain shell service, no children
 	m.cycleChild(1)
 	if got := m.childFocus["web"]; got != "" {
 		t.Fatalf("cycle on childless tab set focus %q, want empty", got)

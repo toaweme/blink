@@ -12,7 +12,7 @@ import (
 func seed(t *testing.T, n int) *Model {
 	t.Helper()
 	m := NewModel([]string{"web"}, nil)
-	m.active = 1 // tabs = [all, web]
+	m.active = 0 // lone service: no all-tab, tabs = [web]
 	if m.activeTab() != "web" {
 		t.Fatalf("active tab = %q, want web", m.activeTab())
 	}

@@ -159,10 +159,20 @@ type tabScroll struct {
 // NewModel builds a TUI model for the given services, wiring the controller
 // that session actions dispatch into.
 func NewModel(services []string, ctrl Controller) *Model {
-	tabs := append([]string{allTab}, services...)
+	// the aggregate "all" tab only earns its place with more than one service;
+	// for a lone service it just duplicates that service's logs and lacks the
+	// per-service verbs (restart), so we drop it and open straight on the
+	// service. A zero-service session keeps the all tab so activeTab never
+	// indexes an empty slice.
+	tabs := services
+	if len(services) != 1 {
+		tabs = append([]string{allTab}, services...)
+	}
 	statuses := make(map[string]string, len(services))
 	buffers := make(map[string][]string, len(services)+1)
-	buffers[allTab] = nil
+	if len(services) != 1 {
+		buffers[allTab] = nil
+	}
 	for _, s := range services {
 		statuses[s] = "pending"
 		buffers[s] = nil
@@ -841,6 +851,11 @@ func (m *Model) appendLine(service, line string) {
 	}
 	m.buffers[service] = buf
 
+	// a lone-service session has no all-tab, so skip the tint + aggregate buffer
+	// nobody would ever view.
+	if len(m.services) < 2 {
+		return
+	}
 	prefix := serviceStyle(service).Render("["+service+"]") + " "
 	// in the all-tab each line gets a per-service background tint so consecutive
 	// lines group by service without re-parsing the prefix.

@@ -6,7 +6,8 @@ import "testing"
 // in the right buffers - the merged service view, the all-tab, and per-container
 // buffers - exactly as a sequence of single LineMsgs would, but in one pass.
 func Test_LinesMsg_IngestsWholeBurst(t *testing.T) {
-	m := NewModel([]string{"docker"}, nil)
+	// two services so the aggregate all-tab exists (a lone service has none).
+	m := NewModel([]string{"web", "docker"}, nil)
 
 	burst := LinesMsg{Lines: []LineMsg{
 		{Service: "docker", Child: "db", Line: "db 1"},

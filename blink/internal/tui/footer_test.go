@@ -87,7 +87,7 @@ func Test_HandleStatusMsg_RecordsPorts(t *testing.T) {
 
 func Test_RenderRightFooter_PortsFollowFocus(t *testing.T) {
 	m := NewModel([]string{"docker"}, nil)
-	m.active = 1 // docker tab
+	m.active = 0 // lone service: no all-tab, docker at index 0
 	m.ports = map[string][]int{
 		"docker":                      {5432, 6379},
 		"docker" + childSep + "db":    {5432},
