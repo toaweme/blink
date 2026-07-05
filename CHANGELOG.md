@@ -5,6 +5,32 @@ All notable changes to this project are documented here, newest first.
 Entries are generated from [Conventional Commits](https://www.conventionalcommits.org)
 and grouped by change type. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-07-05
+
+### Features
+
+- Bound docker log backlog on attach with configurable tail by [@iberflow](https://github.com/iberflow) in [9865a89](https://github.com/toaweme/blink/commit/9865a89fa54f449f23bb49b0c35b085306284a6f).
+- Log a reconnect notice when docker stack is already up by [@iberflow](https://github.com/iberflow) in [296437a](https://github.com/toaweme/blink/commit/296437a6d9edc3a38ce38362dd014d5f92460b00).
+- Show restart and help key hints in the scroll footer by [@iberflow](https://github.com/iberflow) in [efcc415](https://github.com/toaweme/blink/commit/efcc415b1ab9619e6444020d3a77eb12c6bf9337).
+- Allow tabbing in zen mode by [@iberflow](https://github.com/iberflow) in [26cf994](https://github.com/toaweme/blink/commit/26cf99459a74ba47a93e34c26adfea991d2da5a1).
+
+### Fixes
+
+- Clear runner slot on exit to harden restart by [@iberflow](https://github.com/iberflow) in [49bc1ad](https://github.com/toaweme/blink/commit/49bc1add5777a1639a881338b2919284dd593436).
+- Don't restart self-reloading node dev servers on source edits by [@iberflow](https://github.com/iberflow) in [f47e603](https://github.com/toaweme/blink/commit/f47e60331ebfcd74145a7fb1cafa8fdc17fdd9f3).
+- Zen -z start blanked the screen; cap view-switch flush to a screenful by [@iberflow](https://github.com/iberflow) in [ae28048](https://github.com/toaweme/blink/commit/ae280486a73c7ac068df50e2b3228800c842feca).
+- Stream full docker log history on attach (--tail all) by [@iberflow](https://github.com/iberflow) in [ec4ddb7](https://github.com/toaweme/blink/commit/ec4ddb75255a6611e52995ba9f1bdc89609e33ca).
+- Show recent docker logs on attach via --tail, drop reconnect notice by [@iberflow](https://github.com/iberflow) in [5186ac9](https://github.com/toaweme/blink/commit/5186ac9f68dd1714f7c784182ca38ca5642fca51).
+- Keep docker stack up on quit and skip log replay on reconnect by [@iberflow](https://github.com/iberflow) in [bf45a39](https://github.com/toaweme/blink/commit/bf45a39b42e095a2c383903cfca612f35b74bf08).
+
+### Refactors
+
+- Simplify zen mode by [@iberflow](https://github.com/iberflow) in [53c2d5f](https://github.com/toaweme/blink/commit/53c2d5fcaab13284edc9b25eb994e7111328a74a).
+
+### Chores & Other
+
+- Coalesce log bursts into one render to stop backlog scroll animation by [@iberflow](https://github.com/iberflow) in [a982245](https://github.com/toaweme/blink/commit/a98224536fabc277e303108caf5725e31fb709f4).
+
 ## [0.1.2] - 2026-07-01
 
 ### Documentation
@@ -68,6 +94,8 @@ and grouped by change type. This project adheres to [Semantic Versioning](https:
 - Bump deps by [@iberflow](https://github.com/iberflow) in [8678e08](https://github.com/toaweme/blink/commit/8678e08f4f4027ca1d983fa388704052e276a35e).
 - Freeze go 1.26.4 by [@iberflow](https://github.com/iberflow) in [c846eee](https://github.com/toaweme/blink/commit/c846eeefe2e0ed9afc11748e172443acdfacc85e).
 
+[0.2.0]: https://github.com/toaweme/blink/compare/v0.1.3...v0.2.0
+[0.1.3]: https://github.com/toaweme/blink/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/toaweme/blink/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/toaweme/blink/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/toaweme/blink/releases/tag/v0.1.0
