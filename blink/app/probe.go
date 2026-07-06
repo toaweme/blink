@@ -31,6 +31,14 @@ const probeSettle = 600 * time.Millisecond
 // probePoll is how often the service's process group is re-checked while waiting.
 const probePoll = 150 * time.Millisecond
 
+// ephemeralPortMin is the start of the IANA dynamic/private port range (RFC
+// 6335). A port at or above it is never a registered service address: the OS
+// hands these out for a dev server's incidental listeners (Vite's HMR socket,
+// esbuild's module service, node --inspect), which land on a different number
+// every run. Dropping them keeps probing focused on the stable app port instead
+// of writing this run's noise into the config.
+const ephemeralPortMin = 49152
+
 // runtimeProbe spins a single service up via a throwaway supervisor and returns
 // the TCP ports it bound, read from the listening sockets owned by the service's
 // process group. Unlike detect.SniffPorts (which guesses from .env), this
@@ -75,7 +83,25 @@ func runtimeProbe(ctx context.Context, reg *addon.Registry, root string, svc con
 	if err != nil {
 		return nil, err
 	}
-	return portsToConfig(root, svc, ports), nil
+	return portsToConfig(root, svc, stableListenPorts(ports)), nil
+}
+
+// stableListenPorts drops ephemeral-range ports so a probe writes the address a
+// service actually exposes, not the incidental listeners its tooling opened (see
+// ephemeralPortMin). If every observed port was ephemeral it returns the input
+// unchanged: a service that only ever binds in that range should still surface
+// something rather than nothing.
+func stableListenPorts(ports []int) []int {
+	stable := make([]int, 0, len(ports))
+	for _, p := range ports {
+		if p < ephemeralPortMin {
+			stable = append(stable, p)
+		}
+	}
+	if len(stable) == 0 {
+		return ports
+	}
+	return stable
 }
 
 // waitForGroupPorts polls the service's process group until it owns a listening
