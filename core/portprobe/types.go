@@ -6,8 +6,10 @@
 //
 // Each supported OS has its own listenPorts() in a build-tagged file: Linux
 // matches /proc sockets to the group's pids (no external binary), macOS shells
-// out to `lsof -g` (base system). blink is a unix-only supervisor, so other
-// platforms return ErrUnsupported.
+// out to `lsof -g` (base system), and Windows (which has no process groups)
+// walks the runner's descendant process tree and keeps the ports `netstat`
+// attributes to it (best-effort, built-in netstat). The BSDs and anything else
+// return ErrUnsupported.
 package portprobe
 
 import "errors"

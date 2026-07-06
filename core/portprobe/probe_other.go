@@ -1,10 +1,10 @@
-//go:build !linux && !darwin
+//go:build !linux && !darwin && !windows
 
 package portprobe
 
-// listenPorts is the fallback for platforms blink has no port-attribution for.
-// blink is a unix-only supervisor (no Windows process groups, no exec_windows),
-// so runtime discovery degrades to unavailable and callers fall back to
+// listenPorts is the fallback for platforms blink has no port-attribution for
+// (the BSDs and anything else that is neither linux, darwin, nor windows).
+// Runtime discovery degrades to unavailable and callers fall back to
 // detect.SniffPorts' .env guess.
 func listenPorts(pgid int) ([]int, error) {
 	return nil, ErrUnsupported
