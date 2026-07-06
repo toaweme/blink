@@ -147,6 +147,49 @@ func Test_Picker_ReconcileStates(t *testing.T) {
 	}
 }
 
+func Test_Picker_EditedPortsSurviveReconcile(t *testing.T) {
+	pm := newProbeManager(nil)
+	pm.results["web"] = probeOutcome{ports: []config.Port{
+		config.LiteralPort(3000), config.LiteralPort(4206), config.LiteralPort(56260),
+	}}
+
+	// the user probed "web" (3 ports), then edited it down to one; the stored
+	// probe result must not clobber that edit when the picker is rebuilt.
+	// buildPicker reconciles on construction, which is exactly that rebuild.
+	m := buildPicker("t", []pickItem{
+		{svc: config.Service{Name: "web", Ports: []config.Port{config.LiteralPort(3000)}}, keep: true, edited: true},
+	}, 0, false, pm)
+
+	if got := m.items[0].svc.Ports; len(got) != 1 || got[0] != config.LiteralPort(3000) {
+		t.Fatalf("edited ports = %v, want [3000] preserved", got)
+	}
+	if m.items[0].state != probeDone {
+		t.Fatalf("state = %d, want probeDone", m.items[0].state)
+	}
+}
+
+func Test_Picker_ReprobeClearsEditedAndOverwrites(t *testing.T) {
+	pm := newProbeManager(func(config.Service) ([]config.Port, error) {
+		return []config.Port{config.LiteralPort(3000), config.LiteralPort(4206)}, nil
+	})
+	// a hand-edited service (edited=true) whose ports the user trimmed.
+	m := buildPicker("t", []pickItem{
+		{svc: config.Service{Name: "web", Ports: []config.Port{config.LiteralPort(3000)}}, keep: true, edited: true},
+	}, 0, false, pm)
+
+	// pressing `p` is an explicit opt-in: it must clear edited so the fresh
+	// probe result is allowed to overwrite the trimmed ports again.
+	m = send(m, keyMsg("p"))
+	if m.items[0].edited {
+		t.Fatal("re-probe did not clear edited")
+	}
+	waitUntil(t, func() bool { return !pm.anyRunning() })
+	m.reconcile()
+	if got := m.items[0].svc.Ports; len(got) != 2 {
+		t.Fatalf("after re-probe ports = %v, want the discovered [3000 4206]", got)
+	}
+}
+
 func Test_Picker_ProbeKeyStartsSelectedOnly(t *testing.T) {
 	release := make(chan struct{})
 	pm := newProbeManager(func(config.Service) ([]config.Port, error) {

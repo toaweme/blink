@@ -85,13 +85,14 @@ func PickServices(title string, services []config.Service, detectFn func() ([]co
 			if err := EditService(&items[fp.editIdx].svc, otherNames(items, fp.editIdx)); err != nil {
 				return nil, err
 			}
+			items[fp.editIdx].edited = true
 
 		case resAdd:
 			ns := config.Service{Name: uniqueName("service", nameSet(items, -1)), Runtime: "shell"}
 			if err := EditService(&ns, otherNames(items, -1)); err != nil {
 				return nil, err
 			}
-			items = append(items, pickItem{svc: ns, keep: true})
+			items = append(items, pickItem{svc: ns, keep: true, edited: true})
 			cursor = len(items) - 1
 
 		case resDetect:
@@ -154,6 +155,13 @@ type pickItem struct {
 	svc   config.Service
 	keep  bool
 	state probeState
+	// edited is set once the user has authored this service in the editor. Ports
+	// are the one field with two writers, the manual edit and the background
+	// probe, so a still-stored probe result would otherwise overwrite a hand-set
+	// port list when reconcile re-runs on a picker rebuild. edited makes the
+	// manual edit win; an explicit re-probe (`p`) clears it to opt back in. Every
+	// other service field has a single source of truth and never needs this.
+	edited bool
 }
 
 type pickResult int
@@ -339,6 +347,13 @@ func (m picker) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// so at the list level there's nothing to collapse: a deliberate no-op.
 	case "p":
 		if m.probes != nil {
+			// re-probing is an explicit opt-in to discovered ports: let the fresh
+			// result overwrite even services the user hand-edited before.
+			for i := range m.items {
+				if m.items[i].keep {
+					m.items[i].edited = false
+				}
+			}
 			m.probes.start(m.selectedServices())
 			m.reconcile()
 			if !m.ticking {
@@ -393,7 +408,11 @@ func (m picker) reconcile() {
 		case len(out.ports) == 0:
 			m.items[i].state = probeNoPort
 		default:
-			m.items[i].svc.Ports = out.ports
+			// a user edit wins over a stale probe result: don't overwrite ports
+			// they set by hand. Re-probing (`p`) clears edited to opt back in.
+			if !m.items[i].edited {
+				m.items[i].svc.Ports = out.ports
+			}
 			m.items[i].state = probeDone
 		}
 	}
