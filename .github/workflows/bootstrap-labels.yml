@@ -1,0 +1,39 @@
+name: Bootstrap labels
+
+# one-time repo prep: creates every label the governance workflows rely on
+# (the issue-first policy labels and the Dependabot labels). Runs only on manual
+# dispatch, never on its own, so it is safe to leave in place after the first run.
+# prep every repo at once from your machine:
+#   for r in care blink cli date http log sintax; do
+#     gh workflow run bootstrap-labels.yml -R toaweme/$r
+#   done
+
+on:
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  labels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Create governance labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # --force updates an existing label instead of failing, so re-running is safe.
+          label() { gh label create "$1" --repo "$REPO" --color "$2" --description "$3" --force; }
+
+          # issue-first policy labels (pr-issue-policy.yml)
+          label needs-triage         BFD4F2 "Awaiting maintainer triage"
+          label needs-approved-issue D93F0B "PR opened without a maintainer-approved issue"
+          label approved             0E8A16 "Approach approved by a maintainer, ready for a PR"
+
+          # Dependabot labels (dependabot.yml) - Dependabot never self-creates these
+          label dependencies         0366D6 "Dependency updates"
+          label github-actions       000000 "GitHub Actions dependencies"
+          label gomod                00ADD8 "Go module dependencies"

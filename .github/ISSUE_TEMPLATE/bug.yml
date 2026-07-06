@@ -1,0 +1,61 @@
+name: Bug report
+description: Something in the blink CLI behaves incorrectly.
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. A bug report is an issue too, so a maintainer will
+        confirm it before any fix PR is opened. Please do not open a PR yet.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you expect, and what happened instead?
+      placeholder: I ran `blink get` and expected ..., but it ...
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Exact command
+      description: The exact command you ran, including flags.
+      render: shell
+      placeholder: blink get --some-flag ./path
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output / logs
+      description: Relevant terminal output. Paste it as text, not a screenshot.
+      render: shell
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: blink version
+      description: Output of `blink --version`.
+      placeholder: v0.7.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install blink?
+      options:
+        - Homebrew tap
+        - Downloaded release binary
+        - go install
+        - Built from source
+        - Other (describe above)
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and architecture
+      placeholder: macOS 15 arm64 / Ubuntu 24.04 amd64
+    validations:
+      required: true

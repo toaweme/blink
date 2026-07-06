@@ -1,0 +1,47 @@
+name: DCO
+
+# every commit in a PR must carry a Signed-off-by trailer (git commit -s), which
+# certifies the Developer Certificate of Origin 1.1. This is the lightweight,
+# no-CLA way to record contribution provenance under Apache 2.0. The sign-off is a
+# message trailer and is unrelated to any cryptographic commit signature (-S).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  dco:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Verify Signed-off-by on every commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          # read commit messages via the API so we never check out untrusted PR code.
+          # a commit passes if any line reads exactly "Signed-off-by: Name <email>".
+          missing=$(gh api "repos/$REPO/pulls/$PR/commits" --paginate \
+            --jq '.[] | select((.commit.message | test("(?m)^Signed-off-by: .+ <.+@.+>$")) | not) | "\(.sha[0:8])  \(.commit.message | split("\n")[0])"')
+
+          if [ -n "$missing" ]; then
+            echo "The following commits are missing a Signed-off-by trailer:"
+            echo "$missing"
+            echo
+            echo "Sign off your commits with: git commit -s"
+            echo "To fix existing commits:    git rebase --signoff main && git push --force-with-lease"
+            echo "See CONTRIBUTING.md for details."
+            exit 1
+          fi
+
+          echo "all commits are signed off"

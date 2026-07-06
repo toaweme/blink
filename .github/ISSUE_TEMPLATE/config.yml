@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contributing guide (read first)
+    url: https://github.com/toaweme/blink/blob/main/CONTRIBUTING.md
+    about: This project is issue-first. Please read how changes get proposed and approved before opening anything.

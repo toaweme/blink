@@ -1,0 +1,85 @@
+name: PR Issue Policy
+
+# Before a PR is opened a change must start as an issue that a maintainer approves
+# This workflow does not merge or block anything on its own,
+# it flags PRs that lack an approved issue so a human can decide.
+# It never closes or bans automatically (to stay gentle on genuine first-timers).
+
+on:
+  # pull_request_target runs in the base-repo context so the token can comment and
+  # label PRs from forks. We never check out the PR's code, so untrusted code never
+  # runs with this token.
+  pull_request_target:
+    types: [ opened, reopened, edited, ready_for_review ]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # checks out the base branch (not the PR head), so the comment template below
+      # is our own committed copy and no untrusted code is fetched.
+      # v7.0.0 (https://github.com/actions/checkout/releases/tag/v7.0.0)
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - name: Flag PRs without an approved issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          BODY: ${{ github.event.pull_request.body }}
+          ASSOC: ${{ github.event.pull_request.author_association }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          set -euo pipefail
+
+          # every incoming PR gets a triage marker so maintainers can review the queue
+          # this is also where suspected spam or low-effort ("slop") PRs are handled
+          # labelling stays manual because that judgment cannot be automated reliably
+          #
+          # labels are provisioned once by the bootstrap-labels workflow, so this
+          # add-label is a no-op (|| true) on a repo that has not been prepped yet.
+          gh pr edit "$PR" --repo "$REPO" --add-label needs-triage || true
+
+          # maintainers and bots are exempt from the issue-first gate.
+          case "$ASSOC" in
+            OWNER|MEMBER|COLLABORATOR) echo "maintainer PR ($ASSOC), skipping gate"; exit 0 ;;
+          esac
+          case "$AUTHOR" in
+            *"[bot]"|dependabot|dependabot[bot]) echo "bot PR, skipping gate"; exit 0 ;;
+          esac
+
+          # find the first issue referenced by a closing keyword in the PR body.
+          issue=$(printf '%s' "${BODY:-}" \
+            | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]+#[0-9]+' \
+            | grep -oE '[0-9]+' | head -1 || true)
+
+          approved=""
+          if [ -n "$issue" ]; then
+            approved=$(gh api "repos/$REPO/issues/$issue" --jq '.labels[].name' 2>/dev/null | grep -x approved || true)
+          fi
+
+          if [ -n "$issue" ] && [ -n "$approved" ]; then
+            echo "PR links approved issue #$issue"
+            gh pr edit "$PR" --repo "$REPO" --remove-label needs-approved-issue 2>/dev/null || true
+            exit 0
+          fi
+
+          echo "no approved issue linked (issue='${issue:-none}')"
+
+          # only comment the first time we flag it, so editing the PR does not spam.
+          have_label=$(gh pr view "$PR" --repo "$REPO" --json labels --jq '.labels[].name' | grep -x needs-approved-issue || true)
+          gh pr edit "$PR" --repo "$REPO" --add-label needs-approved-issue || true
+
+          if [ -z "$have_label" ]; then
+            gh pr comment "$PR" --repo "$REPO" --body-file .github/pr-unlinked-comment.md
+          fi

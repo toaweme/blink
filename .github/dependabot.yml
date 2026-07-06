@@ -1,0 +1,43 @@
+version: 2
+
+updates:
+  # GitHub Actions we SHA-pin in .github/workflows. Grouped so a year of
+  # neglect still produces at most TWO PRs: one for all minor/patch bumps,
+  # one for all major bumps (kept separate because majors can break).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      actions-major:
+        patterns: ["*"]
+        update-types: ["major"]
+    commit-message:
+      prefix: chore
+      include: scope
+    labels:
+      - dependencies
+      - github-actions
+    assignees:
+      - iberflow
+
+  # Go modules are managed by hand; this block exists ONLY so security fixes
+  # surface. limit 0 disables routine version-bump PRs entirely, while
+  # Dependabot security updates (CVE-driven) still come through.
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: chore
+      include: scope
+    labels:
+      - dependencies
+      - gomod
+    assignees:
+      - iberflow
