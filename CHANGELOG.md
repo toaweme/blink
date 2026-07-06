@@ -5,6 +5,17 @@ All notable changes to this project are documented here, newest first.
 Entries are generated from [Conventional Commits](https://www.conventionalcommits.org)
 and grouped by change type. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-06
+
+### Features
+
+- Best-effort Windows port probing via netstat and process tree by [@iberflow](https://github.com/iberflow) in [e64b6a4](https://github.com/toaweme/blink/commit/e64b6a4ffe31a593829964f3980f58daf23fa96e).
+- Drop ephemeral ports from runtime probe results by [@iberflow](https://github.com/iberflow) in [37387f2](https://github.com/toaweme/blink/commit/37387f28785d2cd873caf5f168facdc14dbab4b5).
+
+### Fixes
+
+- Keep hand-edited ports from being overwritten by stale probe results by [@iberflow](https://github.com/iberflow) in [211e1fb](https://github.com/toaweme/blink/commit/211e1fbf7e5d19222a21d0350efa30f5a1b77ad4).
+
 ## [0.2.1] - 2026-07-05
 
 ### Fixes
@@ -101,6 +112,7 @@ and grouped by change type. This project adheres to [Semantic Versioning](https:
 - Bump deps by [@iberflow](https://github.com/iberflow) in [8678e08](https://github.com/toaweme/blink/commit/8678e08f4f4027ca1d983fa388704052e276a35e).
 - Freeze go 1.26.4 by [@iberflow](https://github.com/iberflow) in [c846eee](https://github.com/toaweme/blink/commit/c846eeefe2e0ed9afc11748e172443acdfacc85e).
 
+[0.3.0]: https://github.com/toaweme/blink/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/toaweme/blink/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/toaweme/blink/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/toaweme/blink/compare/v0.1.2...v0.1.3
