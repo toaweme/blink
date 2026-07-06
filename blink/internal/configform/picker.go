@@ -276,6 +276,9 @@ type picker struct {
 	probes       *probeManager
 	spinner      spinner.Model
 	ticking      bool
+	// tick advances on every spinner frame while a probe runs, driving the pulse
+	// on the `p probe ports` shortcut so it reads as live during a scan.
+	tick int
 }
 
 var _ tea.Model = picker{}
@@ -311,6 +314,7 @@ func (m picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ticking = false
 			return m, nil
 		}
+		m.tick++
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		m.ticking = true
@@ -553,13 +557,61 @@ func (m picker) renderHints() string {
 		hints = append(hints, key.Render("d")+dim.Render(" re-detect"))
 	}
 	if m.probes != nil {
-		hints = append(hints, key.Render("p")+dim.Render(" probe ports"))
+		if m.probes.anyRunning() {
+			// pulse both the shortcut and its label in step with the row spinners so
+			// the footer reads as live while a scan is in flight. The label rides a
+			// dimmer ramp so the key still leads the eye.
+			pKey := lipgloss.NewStyle().Foreground(pulseColor(m.tick)).Bold(true)
+			pLabel := lipgloss.NewStyle().Foreground(pulseLabelColor(m.tick))
+			hints = append(hints, pKey.Render("p")+pLabel.Render(" scanning…"))
+		} else {
+			hints = append(hints, key.Render("p")+dim.Render(" probe ports"))
+		}
 	}
 	hints = append(hints,
 		key.Render("enter")+dim.Render(" save"),
 		key.Render("esc")+dim.Render(" cancel"),
 	)
 	return strings.Join(hints, sep)
+}
+
+// pulseColors is the amber breathing ramp the probe shortcut cycles through
+// while scanning: it brightens to gold and dims back, echoing the row spinners.
+var pulseColors = []lipgloss.Color{
+	lipgloss.Color("208"),
+	lipgloss.Color("214"),
+	lipgloss.Color("220"),
+	lipgloss.Color("226"),
+	lipgloss.Color("220"),
+	lipgloss.Color("214"),
+}
+
+// pulseLabelColors is the dimmer amber ramp the "scanning…" label breathes on,
+// trailing the shortcut's brighter ramp so the key still leads the eye.
+var pulseLabelColors = []lipgloss.Color{
+	lipgloss.Color("94"),
+	lipgloss.Color("136"),
+	lipgloss.Color("172"),
+	lipgloss.Color("178"),
+	lipgloss.Color("172"),
+	lipgloss.Color("136"),
+}
+
+// pulseColor picks the pulse frame for the current tick, looping the ramp so the
+// shortcut breathes for as long as a scan runs.
+func pulseColor(tick int) lipgloss.Color {
+	return pulseColors[wrapIndex(tick, len(pulseColors))]
+}
+
+// pulseLabelColor is the label's frame for the current tick, in step with
+// pulseColor but on the dimmer ramp.
+func pulseLabelColor(tick int) lipgloss.Color {
+	return pulseLabelColors[wrapIndex(tick, len(pulseLabelColors))]
+}
+
+// wrapIndex maps tick onto [0,n) safely for negative ticks too.
+func wrapIndex(tick, n int) int {
+	return ((tick % n) + n) % n
 }
 
 func (m picker) nameWidth() int {
