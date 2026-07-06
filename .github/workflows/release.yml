@@ -17,16 +17,13 @@ jobs:
       contents: read
       id-token: write
     steps:
-      # v7.0.0 (https://github.com/actions/checkout/releases/tag/v7.0.0)
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      # v6.5.0 (https://github.com/actions/setup-go/releases/tag/v6.5.0)
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
 
-      # v0.8.1 (https://github.com/toaweme/care/releases/tag/v0.8.1)
-      - uses: toaweme/care@3745e681924c9f0090ba1a310476011b7c7b5c44
+      - uses: toaweme/care@3745e681924c9f0090ba1a310476011b7c7b5c44 # v0.8.1
         with:
           strict: true
 
@@ -34,18 +31,15 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      # v7.0.0 (https://github.com/actions/checkout/releases/tag/v7.0.0)
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0   # goreleaser needs full history for the changelog
 
-      # v6.5.0 (https://github.com/actions/setup-go/releases/tag/v6.5.0)
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
 
-      # v0.8.1 (https://github.com/toaweme/care/releases/tag/v0.8.1)
-      - uses: toaweme/care@3745e681924c9f0090ba1a310476011b7c7b5c44
+      - uses: toaweme/care@3745e681924c9f0090ba1a310476011b7c7b5c44 # v0.8.1
         with:
           install-only: true
 
@@ -63,8 +57,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # v7.2.2 (https://github.com/goreleaser/goreleaser-action/releases/tag/v7.2.2)
-      - uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89
+      - uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
         with:
           version: "~> v2"
           args: release --clean --release-notes=${{ runner.temp }}/notes.md

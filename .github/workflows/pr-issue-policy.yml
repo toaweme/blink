@@ -28,8 +28,7 @@ jobs:
     steps:
       # checks out the base branch (not the PR head), so the comment template below
       # is our own committed copy and no untrusted code is fetched.
-      # v7.0.0 (https://github.com/actions/checkout/releases/tag/v7.0.0)
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Flag PRs without an approved issue
         env:

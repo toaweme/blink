@@ -20,16 +20,13 @@ jobs:
       contents: read
       id-token: write   # publish the report to the care dashboard
     steps:
-      # v7.0.0 (https://github.com/actions/checkout/releases/tag/v7.0.0)
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      # v6.5.0 (https://github.com/actions/setup-go/releases/tag/v6.5.0)
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
 
-      # v0.8.1 (https://github.com/toaweme/care/releases/tag/v0.8.1)
-      - uses: toaweme/care@3745e681924c9f0090ba1a310476011b7c7b5c44
+      - uses: toaweme/care@3745e681924c9f0090ba1a310476011b7c7b5c44 # v0.8.1
         with:
           strict: true                                  # fail CI on a failing check
           publish-url: https://code.toawe.me/ingest?kind=care
@@ -45,11 +42,9 @@ jobs:
         goos: [linux, darwin, windows]
         goarch: [amd64, arm64]
     steps:
-      # v7.0.0 (https://github.com/actions/checkout/releases/tag/v7.0.0)
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      # v6.5.0 (https://github.com/actions/setup-go/releases/tag/v6.5.0)
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
 
