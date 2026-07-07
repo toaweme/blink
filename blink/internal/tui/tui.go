@@ -50,10 +50,12 @@ func (m *Model) WithServicePorts(ports map[string][]int) *Model {
 	return m
 }
 
-// NewApp wraps a model in a runnable bubbletea program with the alt-screen
-// and mouse capture enabled.
+// NewApp wraps a model in a runnable bubbletea program in the alt-screen.
+// Mouse capture stays off so the terminal keeps native text selection. With it
+// on, every drag goes to the app instead and select-to-copy breaks. The wheel
+// still scrolls because the terminal's alternate-scroll feeds it in as up/down.
 func NewApp(model *Model) *App {
-	prog := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	prog := tea.NewProgram(model, tea.WithAltScreen())
 	return &App{prog: prog, model: model}
 }
 
