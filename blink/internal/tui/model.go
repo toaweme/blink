@@ -343,40 +343,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
-	case tea.MouseMsg:
-		// horizontal wheel switches tabs (trackpad swipe, shift+wheel on most
-		// mice). Press-only to avoid rapid-fire double events.
-		if msg.Action == tea.MouseActionPress {
-			switch msg.Button {
-			case tea.MouseButtonWheelLeft:
-				m.gotoTab((m.active - 1 + len(m.tabs)) % len(m.tabs))
-				return m, nil
-			case tea.MouseButtonWheelRight:
-				m.gotoTab((m.active + 1) % len(m.tabs))
-				return m, nil
-			default:
-				// other buttons fall through to vertical-wheel handling below.
-			}
-		}
-		// in cursor mode the vertical wheel moves the cursor and the viewport
-		// follows; otherwise it falls through to the viewport for plain scrolling.
-		if m.cursorMode && msg.Action == tea.MouseActionPress {
-			switch msg.Button {
-			case tea.MouseButtonWheelUp:
-				m.moveCursor(-scrollStep)
-				m.refreshViewport()
-				return m, nil
-			case tea.MouseButtonWheelDown:
-				m.moveCursor(scrollStep)
-				m.refreshViewport()
-				return m, nil
-			default:
-				// non-wheel buttons fall through to the viewport.
-			}
-		}
-		// the vertical wheel falls through to the viewport for scrolling.
-		// Left-click is deliberately unbound: mouse reporting is unreliable
-		// across terminals, so the line cursor is keyboard-driven (e then ↑/↓).
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
