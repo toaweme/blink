@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/toaweme/blink/blink/internal/theme"
 	"github.com/toaweme/blink/core/control"
 )
 
@@ -21,10 +22,6 @@ const (
 	maxBufferedLines = 5000
 	pulseInterval    = 700 * time.Millisecond
 )
-
-// accentColor is the shared teal/emerald used for the active/current/selected
-// thing across the UI (active tab, focused-container badge).
-const accentColor = "36"
 
 // Controller is the session-action sink the TUI dispatches into. Only session
 // actions reach here; view actions stay in the model.
@@ -140,7 +137,7 @@ type Model struct {
 	// flashDuration after an action. The pulse tick re-renders, so it fades on its
 	// own without a timer.
 	flash      string
-	flashColor string
+	flashColor lipgloss.TerminalColor
 	flashAt    time.Time
 }
 
@@ -180,7 +177,7 @@ func NewModel(services []string, ctrl Controller) *Model {
 
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
-	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+	sp.Style = lipgloss.NewStyle().Foreground(theme.Cursor)
 
 	return &Model{
 		services:    services,
@@ -440,18 +437,18 @@ func (m *Model) handleStatusMsg(msg StatusMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	if msg.Err != nil {
-		m.appendLine(msg.Service, lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render("error: "+msg.Err.Error()))
+		m.appendLine(msg.Service, lipgloss.NewStyle().Foreground(theme.Danger).Render("error: "+msg.Err.Error()))
 	}
 	label := "── " + msg.Status + " ──"
 	if msg.Child != "" {
 		// surface the container so it joins the in-tab ring before its first log
 		// line, and give its focused view the bare status marker.
 		m.noteChild(msg.Service, msg.Child)
-		childLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render("── " + msg.Status + " ──")
+		childLabel := lipgloss.NewStyle().Foreground(theme.Muted).Render("── " + msg.Status + " ──")
 		m.appendChildLine(msg.Service, msg.Child, childLabel)
 		label = "── " + msg.Child + ": " + msg.Status + " ──"
 	}
-	labelLine := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render(label)
+	labelLine := lipgloss.NewStyle().Foreground(theme.Muted).Render(label)
 	m.appendLine(msg.Service, labelLine)
 	if m.activeTab() == allTab || m.activeTab() == msg.Service {
 		m.refreshViewportFollow()
@@ -887,12 +884,12 @@ func (m *Model) renderBufferMapped(lines []string) (string, []int) {
 	}
 	// all three gutter markers use the same left-edge glyph so the cursor and
 	// selection bars line up exactly; only the color differs.
-	marker := func(color string) string {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render("▌")
+	marker := func(c lipgloss.TerminalColor) string {
+		return lipgloss.NewStyle().Foreground(c).Bold(true).Render("▌")
 	}
-	cursorMarker := marker("220")
-	selMarker := marker("82")
-	bothMarker := marker("44")
+	cursorMarker := marker(theme.Cursor)
+	selMarker := marker(theme.Success)
+	bothMarker := marker(theme.Accent)
 	var b strings.Builder
 	mapping := make([]int, 0, len(lines))
 	for i, line := range lines {
@@ -939,7 +936,7 @@ func (m *Model) renderTabs() string {
 	}
 	pad := strings.Repeat(" ", hPad)
 	bar := pad + left + strings.Repeat(" ", gap) + right + pad
-	sep := lipgloss.NewStyle().Foreground(lipgloss.Color("237")).Render(strings.Repeat("─", m.width))
+	sep := lipgloss.NewStyle().Foreground(theme.Rule).Render(strings.Repeat("─", m.width))
 	return bar + "\n" + sep
 }
 
@@ -948,17 +945,17 @@ func (m *Model) renderTabChips() string {
 	for i, name := range m.tabs {
 		// color-code the label by service status: gray pending, red error,
 		// green active. the all-tab has no status, so it stays neutral.
-		fg := lipgloss.Color("250")
+		var fg lipgloss.TerminalColor = theme.Subtle
 		if name != allTab {
 			fg = statusColor(m.statuses[name])
 		}
 		var chip string
 		if i == m.active {
-			// active tab is a filled teal chip with white text; teal/emerald is the
-			// shared accent for the current/selected thing across the UI.
+			// active tab is a filled accent chip with white text; the accent is the
+			// shared color for the current/selected thing across the UI.
 			chip = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("231")).
-				Background(lipgloss.Color(accentColor)).
+				Foreground(theme.OnAccent).
+				Background(theme.Accent).
 				Bold(true).
 				Padding(0, 1).
 				Render(name)
@@ -976,27 +973,24 @@ func (m *Model) renderTabChips() string {
 
 // statusColor maps a service status to the tab label color: green when active,
 // red on error, gray while pending or otherwise idle.
-func statusColor(status string) lipgloss.Color {
+func statusColor(status string) lipgloss.TerminalColor {
 	switch status {
 	case "running":
-		return lipgloss.Color("82")
+		return theme.Success
 	case "crashed":
-		return lipgloss.Color("203")
+		return theme.Danger
 	default:
-		return lipgloss.Color("244")
+		return theme.Muted
 	}
 }
-
-// barBgColor is the background tint used for the bottom bar (footer).
-const barBgColor = "236"
 
 // barStyle returns the base style for a bottom-bar cell with the shared
 // background tint. Foreground is set per-segment.
 func barStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Background(lipgloss.Color(barBgColor))
+	return lipgloss.NewStyle().Background(theme.BarBg)
 }
 
-// renderBar paints a left/center/right bar onto barBgColor across the full
+// renderBar paints a left/center/right bar onto the bar background across the full
 // terminal width: a top rule plus a single content row. Empty segments collapse
 // to spaces.
 func (m *Model) renderBar(left, center, right string) string {
@@ -1033,13 +1027,13 @@ func (m *Model) renderBar(left, center, right string) string {
 	if w := lipgloss.Width(content); w < m.width {
 		content += gap(m.width - w)
 	}
-	rule := lipgloss.NewStyle().Foreground(lipgloss.Color("237")).Render(strings.Repeat("─", m.width))
+	rule := lipgloss.NewStyle().Foreground(theme.Rule).Render(strings.Repeat("─", m.width))
 	return rule + "\n" + content
 }
 
 func (m *Model) renderFooter() string {
-	dim := barStyle().Foreground(lipgloss.Color("244"))
-	val := barStyle().Foreground(lipgloss.Color("250")).Bold(true)
+	dim := barStyle().Foreground(theme.Muted)
+	val := barStyle().Foreground(theme.Subtle).Bold(true)
 
 	// left: selection shortcuts while in cursor mode; otherwise a single hint for
 	// the key that enters it, so the feature is discoverable. The tab chips
@@ -1087,8 +1081,10 @@ func (m *Model) renderContainerNav(dim, val lipgloss.Style) string {
 		}
 	}
 	key := m.keyFor(control.ActionNextChild)
-	// fixed-width label so the i/n counter keeps its column as containers change.
-	return val.Render(key) + dim.Render(" ") + val.Render(fitLabel(label, containerLabelWidth)) +
+	// the container name is dimmed like the other footer labels, so only the key
+	// leads the eye; fixed-width label so the i/n counter keeps its column as
+	// containers change.
+	return val.Render(key) + dim.Render(" ") + dim.Render(fitLabel(label, containerLabelWidth)) +
 		dim.Render(fmt.Sprintf(" %d/%d", idx+1, len(children)+1))
 }
 
@@ -1187,7 +1183,7 @@ func (m *Model) keyFor(a control.Action) string {
 
 func (m *Model) renderRightFooter(dim, val lipgloss.Style) string {
 	now := time.Now()
-	url := barStyle().Foreground(lipgloss.Color("75"))
+	url := barStyle().Foreground(theme.Link)
 	tab := m.activeTab()
 	if tab != allTab {
 		var parts []string
@@ -1300,25 +1296,25 @@ func (m *Model) modeBadges() string {
 		pills = append(pills, badge(m.flash, m.flashColor))
 	}
 	if m.cursorMode {
-		pills = append(pills, badge("SELECT", "214"))
+		pills = append(pills, badge("SELECT", theme.Warning))
 	}
 	if c := m.childFocus[m.activeTab()]; c != "" {
-		pills = append(pills, badge(c, accentColor))
+		pills = append(pills, badge(c, theme.Accent))
 	}
 	return strings.Join(pills, " ")
 }
 
 // setFlash arms a transient action badge (e.g. COPIED) in the corner.
-func (m *Model) setFlash(text, color string) {
+func (m *Model) setFlash(text string, color lipgloss.TerminalColor) {
 	m.flash = text
 	m.flashColor = color
 	m.flashAt = time.Now()
 }
 
-func badge(text, color string) string {
+func badge(text string, color lipgloss.TerminalColor) string {
 	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color("231")).
-		Background(lipgloss.Color(color)).
+		Foreground(theme.OnAccent).
+		Background(color).
 		Padding(0, 1).
 		Bold(true).
 		Render(text)
@@ -1332,54 +1328,30 @@ func padRight(s string, n int) string {
 	return s + strings.Repeat(" ", n-w)
 }
 
-// renderBrand draws the gradient "blink" wordmark in the header.
+// renderBrand draws the gradient "blink" wordmark in the header. The per-letter
+// ramp settles onto the accent so the logo shares the brand color.
 func renderBrand() string {
-	letters := []struct {
-		r rune
-		c string
-	}{
-		{'b', "30"}, {'l', "36"}, {'i', "44"}, {'n', "51"}, {'k', "87"},
-	}
+	const word = "blink"
 	var out strings.Builder
-	for _, l := range letters {
-		out.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(l.c)).Bold(true).Render(string(l.r)))
+	for i, r := range word {
+		c := theme.LogoRamp[i%len(theme.LogoRamp)]
+		out.WriteString(lipgloss.NewStyle().Foreground(c).Bold(true).Render(string(r)))
 	}
 	return out.String()
-}
-
-// palette mirrors the plain UI's service colors for consistency.
-var palette = []lipgloss.Color{
-	lipgloss.Color("39"), lipgloss.Color("214"), lipgloss.Color("141"),
-	lipgloss.Color("82"), lipgloss.Color("203"), lipgloss.Color("220"),
-	lipgloss.Color("117"), lipgloss.Color("213"),
-}
-
-// tintPalette is the darkened counterpart of palette: one subdued background
-// color per service slot, used only in the all-tab to hint which service a line
-// belongs to without obscuring the text.
-var tintPalette = []lipgloss.Color{
-	lipgloss.Color("17"),  // dim blue, palette 39
-	lipgloss.Color("58"),  // dim olive, 214
-	lipgloss.Color("53"),  // dim purple, 141
-	lipgloss.Color("22"),  // dim green, 82
-	lipgloss.Color("52"),  // dim red, 203
-	lipgloss.Color("100"), // dim yellow, 220
-	lipgloss.Color("24"),  // dim teal, 117
-	lipgloss.Color("89"),  // dim magenta, 213
 }
 
 func paletteIndex(name string) int {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(name))
-	return int(h.Sum32()) % len(palette)
+	return int(h.Sum32()) % len(theme.ServicePalette)
 }
 
 func serviceStyle(name string) lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(palette[paletteIndex(name)]).Bold(true)
+	return lipgloss.NewStyle().Foreground(theme.ServicePalette[paletteIndex(name)]).Bold(true)
 }
 
 // serviceTintStyle returns the muted-background style used to tint a service's
 // lines in the all-tab. Foreground inherits from the line content.
 func serviceTintStyle(name string) lipgloss.Style {
-	return lipgloss.NewStyle().Background(tintPalette[paletteIndex(name)])
+	return lipgloss.NewStyle().Background(theme.ServiceTintPalette[paletteIndex(name)])
 }

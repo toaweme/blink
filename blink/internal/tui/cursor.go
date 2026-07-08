@@ -10,6 +10,8 @@ import (
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/toaweme/blink/blink/internal/theme"
 )
 
 // cursor model: a single-line park on the active tab. ↑/↓ moves it, esc clears
@@ -295,7 +297,7 @@ func (m *Model) copySelection() {
 		m.appendLine(m.activeTab(), m.feedbackErr("copy: "+err.Error()))
 		return
 	}
-	m.setFlash(fmt.Sprintf("COPIED %d", len(lines)), "82")
+	m.setFlash(fmt.Sprintf("COPIED %d", len(lines)), theme.Success)
 }
 
 // writeSelection (bound to w) replaces <logDir>/<tab>.selected.log with the
@@ -320,7 +322,7 @@ func (m *Model) emitSelection(appendMode bool) {
 			if appendMode {
 				verb = "APPENDED"
 			}
-			m.setFlash(fmt.Sprintf("%s %d", verb, len(lines)), "44")
+			m.setFlash(fmt.Sprintf("%s %d", verb, len(lines)), theme.Success)
 		}
 	}
 	// clipboard is a bonus; the file write is the contract.
@@ -328,7 +330,7 @@ func (m *Model) emitSelection(appendMode bool) {
 }
 
 func (m *Model) feedbackErr(s string) string {
-	return lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render(s)
+	return lipgloss.NewStyle().Foreground(theme.Danger).Render(s)
 }
 
 // writeSelectedLog writes lines to <logDir>/<tab>.selected.log, creating the

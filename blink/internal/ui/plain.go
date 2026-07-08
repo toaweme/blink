@@ -17,6 +17,7 @@ import (
 
 	"github.com/toaweme/log"
 
+	"github.com/toaweme/blink/blink/internal/theme"
 	"github.com/toaweme/blink/core/addon"
 	"github.com/toaweme/blink/core/config"
 	"github.com/toaweme/blink/core/output"
@@ -274,22 +275,12 @@ func (c *crlfWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// palette is a small set of foreground colors deterministically assigned to
-// service names, stable across runs.
-var palette = []lipgloss.Color{
-	lipgloss.Color("39"),  // cyan
-	lipgloss.Color("214"), // orange
-	lipgloss.Color("141"), // purple
-	lipgloss.Color("82"),  // green
-	lipgloss.Color("203"), // red
-	lipgloss.Color("220"), // yellow
-	lipgloss.Color("117"), // light blue
-	lipgloss.Color("213"), // pink
-}
-
+// serviceStyle colors a service name from the shared categorical palette,
+// deterministically and stable across runs, so a service keeps the same color in
+// both the plain and TUI renderers.
 func serviceStyle(name string) lipgloss.Style {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(name))
-	c := palette[int(h.Sum32())%len(palette)]
+	c := theme.ServicePalette[int(h.Sum32())%len(theme.ServicePalette)]
 	return lipgloss.NewStyle().Foreground(c).Bold(true)
 }
