@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/toaweme/blink/blink/internal/theme"
 )
 
 // humanizeKey renders a bubbletea key string for display: " " becomes "space"
@@ -25,8 +27,8 @@ func humanizeKey(k string) string {
 // renderHelpDialog renders the keyboard reference modal. Bindings are rendered
 // live from the active keymap so blink.yaml control.keys overrides are reflected.
 func (m *Model) renderHelpDialog() string {
-	titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("36")).Bold(true)
-	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+	titleStyle := lipgloss.NewStyle().Foreground(theme.Accent).Bold(true)
+	dim := lipgloss.NewStyle().Foreground(theme.Muted)
 
 	header := titleStyle.Render("BLINK") + "  " + dim.Render("keyboard · esc close")
 	body := m.renderHelpKeyboard()
@@ -61,16 +63,18 @@ func (m *Model) renderHelpDialog() string {
 	content := header + scrollHint + "\n\n" + strings.Join(visible, "\n")
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("36")).
+		BorderForeground(theme.Accent).
 		Padding(1, 3).
 		Render(content)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }
 
 func (m *Model) renderHelpKeyboard() string {
-	title := lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Bold(true)
-	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
-	desc := lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
+	// section headings are set apart by weight, not a distinct hue, so the modal
+	// stays on-palette (accent title, yellow keys, neutral text).
+	title := lipgloss.NewStyle().Foreground(theme.Bright).Bold(true)
+	keyStyle := lipgloss.NewStyle().Foreground(theme.Cursor).Bold(true)
+	desc := lipgloss.NewStyle().Foreground(theme.Subtle)
 
 	pair := func(k, d string) string { return "  " + padRight(keyStyle.Render(k), 22) + desc.Render(d) }
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/toaweme/log"
 
+	"github.com/toaweme/blink/blink/internal/theme"
 	"github.com/toaweme/blink/core/config"
 )
 
@@ -286,7 +287,7 @@ var _ tea.Model = picker{}
 func buildPicker(title string, items []pickItem, cursor int, allowDetect bool, probes *probeManager) picker {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
-	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+	sp.Style = lipgloss.NewStyle().Foreground(theme.Cursor)
 	m := picker{title: title, items: items, cursor: cursor, allowDetect: allowDetect, probes: probes, spinner: sp}
 	m.reconcile()
 	return m
@@ -433,20 +434,26 @@ func (m picker) selectedServices() []config.Service {
 }
 
 const (
-	colGap     = 2
-	rtWidth    = 8
-	cyan       = lipgloss.Color("44")
-	green      = lipgloss.Color("78")
-	dimColor   = lipgloss.Color("244")
-	faintColor = lipgloss.Color("240")
-	portColor  = lipgloss.Color("75")
-	envColor   = lipgloss.Color("180")
+	colGap  = 2
+	rtWidth = 8
+)
+
+// picker colors are pulled from the shared theme so the "blink init" title, the
+// form cursor, and the selection checkbox match the running TUI instead of
+// carrying their own near-identical teal and green.
+var (
+	titleColor = theme.Accent
+	checkColor = theme.Success
+	dimColor   = theme.Muted
+	faintColor = theme.Faint
+	portColor  = theme.Link
+	envColor   = theme.Env
 )
 
 func (m picker) View() string {
 	var b strings.Builder
 
-	titleStyle := lipgloss.NewStyle().Foreground(cyan).Bold(true)
+	titleStyle := lipgloss.NewStyle().Foreground(titleColor).Bold(true)
 	dim := lipgloss.NewStyle().Foreground(dimColor)
 	selected := 0
 	for _, it := range m.items {
@@ -494,12 +501,12 @@ func (m picker) renderRow(i int, it pickItem, nameW, cmdW int) string {
 
 	arrow := "  "
 	if i == m.cursor {
-		arrow = lipgloss.NewStyle().Foreground(cyan).Bold(true).Render("❯ ")
+		arrow = lipgloss.NewStyle().Foreground(titleColor).Bold(true).Render("❯ ")
 	}
 
 	box := dim.Render("○")
 	if it.keep {
-		box = lipgloss.NewStyle().Foreground(green).Render("◉")
+		box = lipgloss.NewStyle().Foreground(checkColor).Render("◉")
 	}
 
 	nameStyle := lipgloss.NewStyle().Bold(true)
@@ -530,7 +537,7 @@ func (m picker) renderPorts(it pickItem) string {
 	case probeNoPort:
 		return dim.Render("no port")
 	case probeFailed:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("131")).Render("n/a")
+		return lipgloss.NewStyle().Foreground(theme.Danger).Render("n/a")
 	default:
 		// probeIdle / probeDone: render the (possibly probe-filled) ports below.
 	}
@@ -541,7 +548,7 @@ func (m picker) renderPorts(it pickItem) string {
 }
 
 func (m picker) renderHints() string {
-	key := lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Bold(true)
+	key := lipgloss.NewStyle().Foreground(theme.Bright).Bold(true)
 	dim := lipgloss.NewStyle().Foreground(dimColor)
 	sep := dim.Render("   ")
 	hints := []string{
