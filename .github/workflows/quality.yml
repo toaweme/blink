@@ -31,6 +31,11 @@ jobs:
           strict: true                                  # fail CI on a failing check
           publish-url: https://code.toawe.me/ingest?kind=care
 
+      # publish this repo's code view to code.toawe.me
+      - uses: toaweme/codereport@10bd1b60f6525ae86af9ba719ceedfc06c160271 # v0.3.0
+        with:
+          publish-url: https://code.toawe.me/ingest?kind=code
+
   # care only builds/lints on the runner's own GOOS/GOARCH, so a build break
   # confined to a platform-specific file (e.g. a windows-only source) slips
   # through and is only caught by goreleaser during a tag push. Cross-compile
