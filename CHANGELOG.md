@@ -5,6 +5,34 @@ All notable changes to this project are documented here, newest first.
 Entries are generated from [Conventional Commits](https://www.conventionalcommits.org)
 and grouped by change type. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-10
+
+### Features
+
+- New demo videos by [@iberflow](https://github.com/iberflow) in [a547896](https://github.com/toaweme/blink/commit/a547896432b9ced1f21a4c38f29e95394605356e).
+- Unify TUI colors by [@iberflow](https://github.com/iberflow) in [9749888](https://github.com/toaweme/blink/commit/974988897c2c23da1e0367994f65827e1bd74c6e).
+- Animate port probe shortcut while in action by [@iberflow](https://github.com/iberflow) in [ad60c45](https://github.com/toaweme/blink/commit/ad60c45d604646c1f02e513a5024cc838745e0ff).
+
+### Fixes
+
+- Restore native text selection by disabling mouse capture by [@iberflow](https://github.com/iberflow) in [e4a2dd7](https://github.com/toaweme/blink/commit/e4a2dd7c3c54a05fe827aeef1f19f1648e1e8b35).
+- Pin care action by commit sha, not tag object by [@iberflow](https://github.com/iberflow) in [c74eb45](https://github.com/toaweme/blink/commit/c74eb45b79d1eda3a7d0ed4f3099ea3f513e11b0).
+
+### Documentation
+
+- Add Contributing section to README by [@iberflow](https://github.com/iberflow) in [48898e6](https://github.com/toaweme/blink/commit/48898e6479b6f9d58eddb8db54d4f6c447e6057f).
+
+### CI & Build
+
+- Bump care action to v0.9.3 by [@iberflow](https://github.com/iberflow) in [2c2dc95](https://github.com/toaweme/blink/commit/2c2dc95e9d1a23fa0c007b32493d4cb0a63712bb).
+- Move action version to inline comment so dependabot maintains it by [@iberflow](https://github.com/iberflow) in [7d9cae5](https://github.com/toaweme/blink/commit/7d9cae5e585514944bd8697a1ad29d55f83cbefd).
+- Add governance workflows and contributor docs by [@iberflow](https://github.com/iberflow) in [f70bb9c](https://github.com/toaweme/blink/commit/f70bb9c2f9cf742a09d7cc1ab021e4b9177658c4).
+
+### Chores & Other
+
+- Update videos by [@iberflow](https://github.com/iberflow) in [15b9695](https://github.com/toaweme/blink/commit/15b9695bebf9a0d04a88825c4fbf874cc3fb0b09).
+- **Deps:** Bump goreleaser/goreleaser-action by [@dependabot[bot]](https://github.com/dependabot[bot]) in [1da67fb](https://github.com/toaweme/blink/commit/1da67fb0319e959cc17627ba27bfcdf465ff4a00).
+
 ## [0.3.0] - 2026-07-06
 
 ### Features
@@ -112,6 +140,7 @@ and grouped by change type. This project adheres to [Semantic Versioning](https:
 - Bump deps by [@iberflow](https://github.com/iberflow) in [8678e08](https://github.com/toaweme/blink/commit/8678e08f4f4027ca1d983fa388704052e276a35e).
 - Freeze go 1.26.4 by [@iberflow](https://github.com/iberflow) in [c846eee](https://github.com/toaweme/blink/commit/c846eeefe2e0ed9afc11748e172443acdfacc85e).
 
+[0.4.0]: https://github.com/toaweme/blink/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/toaweme/blink/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/toaweme/blink/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/toaweme/blink/compare/v0.1.3...v0.2.0
