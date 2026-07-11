@@ -93,6 +93,11 @@ func loadRunConfig(cwd string, in RunConfig) (config.Config, error) {
 	}
 	cfg.Zen = in.Zen
 
+	// disabled services stay in the config but never run: drop them before
+	// scoping so they don't appear in the supervised set or the TUI, and so a
+	// --services reference to a disabled service fails fast like an unknown one.
+	cfg.Services = enabledServices(cfg.Services)
+
 	// the cli lib splits the comma-separated flag/env via the field's sep tag.
 	cfg.Runtime.Services = in.Services
 
@@ -118,6 +123,19 @@ func loadRunConfig(cwd string, in RunConfig) (config.Config, error) {
 func runUI(cfg config.Config, reg *addon.Registry) error {
 	app := ui.NewApp(ui.DefaultRegistry(reg))
 	return app.Run(cfg)
+}
+
+// enabledServices returns only the services that are not marked Disabled, so a
+// deselected-but-kept service (see config.Service.Disabled) is excluded from the
+// run without being removed from the config file.
+func enabledServices(all []config.Service) []config.Service {
+	out := make([]config.Service, 0, len(all))
+	for _, s := range all {
+		if !s.Disabled {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // scopeServices filters the configured service list to the names passed via

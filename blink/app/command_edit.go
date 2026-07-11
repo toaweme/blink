@@ -55,7 +55,11 @@ func (c *EditCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
 		return runtimeProbe(probeCtx, c.reg, options.Cwd, svc)
 	}
 
-	kept, err := configform.PickServices("blink edit · "+filepath.Base(path), cfg.Services, detectFn, scanPathFn, probeFn)
+	kept, err := configform.PickServices("blink edit · "+filepath.Base(path), cfg.Services, configform.PickOptions{
+		DetectFn:   detectFn,
+		ScanPathFn: scanPathFn,
+		ProbeFn:    probeFn,
+	})
 	if err != nil {
 		if errors.Is(err, configform.ErrCanceled) {
 			fmt.Println("aborted, no changes written")

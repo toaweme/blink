@@ -14,7 +14,7 @@ import (
 func newPicker(names ...string) picker {
 	items := make([]pickItem, len(names))
 	for i, n := range names {
-		items[i] = pickItem{svc: config.Service{Name: n}, keep: true}
+		items[i] = pickItem{svc: config.Service{Name: n}, enabled: true}
 	}
 	return picker{title: "t", items: items}
 }
@@ -50,10 +50,13 @@ func Test_Picker_NavigateAndToggle(t *testing.T) {
 	if m.cursor != 1 {
 		t.Fatalf("cursor = %d, want 1", m.cursor)
 	}
-	// space drops "b".
+	// space disables "b" (kept, not dropped).
 	m = send(m, keyMsg("space"))
-	if m.items[1].keep {
-		t.Fatalf("item b still kept after space")
+	if m.items[1].enabled {
+		t.Fatalf("item b still enabled after space")
+	}
+	if len(m.items) != 3 {
+		t.Fatalf("space dropped a row; deselect must keep it (%d rows)", len(m.items))
 	}
 	// can't move past the ends.
 	m = send(m, keyMsg("up"))
@@ -84,6 +87,61 @@ func Test_Picker_WriteAndCancel(t *testing.T) {
 	}
 	if got := send(newPicker("a"), keyMsg("a")).result; got != resAdd {
 		t.Fatalf("a result = %d, want resAdd", got)
+	}
+}
+
+func Test_Picker_DeselectDisablesNotDrops(t *testing.T) {
+	m := newPicker("a", "b")
+	// space deselects "a": that flips enabled, never removes the row, so the
+	// service is retained and written back disabled.
+	m = send(m, keyMsg("space"))
+	if m.items[0].enabled {
+		t.Fatalf("deselected service should be disabled (enabled=false)")
+	}
+	if len(m.items) != 2 {
+		t.Fatalf("deselect dropped a row (%d left); it must keep the service", len(m.items))
+	}
+
+	out := collectServices(m.items)
+	if len(out) != 2 {
+		t.Fatalf("collectServices dropped a service: got %d, want 2", len(out))
+	}
+	if !out[0].Disabled {
+		t.Fatalf("service a should be written with Disabled set")
+	}
+	if out[1].Disabled {
+		t.Fatalf("service b should stay enabled")
+	}
+}
+
+func Test_Picker_RemoveDropsService(t *testing.T) {
+	m := newPicker("a", "b", "c")
+	m = send(m, keyMsg("down")) // cursor on "b"
+	m = send(m, keyMsg("x"))    // remove "b"
+	if len(m.items) != 2 || m.items[0].svc.Name != "a" || m.items[1].svc.Name != "c" {
+		t.Fatalf("remove did not drop b: %+v", m.items)
+	}
+	// removing the last row clamps the cursor so it never dangles past the slice.
+	m = send(m, keyMsg("down")) // cursor on "c" (idx 1)
+	m = send(m, keyMsg("x"))    // remove "c"
+	if m.cursor != 0 || len(m.items) != 1 {
+		t.Fatalf("cursor=%d len=%d after removing last row, want 0/1", m.cursor, len(m.items))
+	}
+}
+
+func Test_CollectServices_DisabledRoundTrip(t *testing.T) {
+	// a service loaded already-disabled stays disabled; re-enabling it clears the
+	// flag. Both survive collection (removal is the only way to drop one).
+	items := []pickItem{
+		{svc: config.Service{Name: "a"}, enabled: true},
+		{svc: config.Service{Name: "b", Disabled: true}, enabled: false},
+	}
+	out := collectServices(items)
+	if len(out) != 2 {
+		t.Fatalf("collect = %+v, want both a and b", out)
+	}
+	if out[0].Disabled || !out[1].Disabled {
+		t.Fatalf("collect disabled flags = [%v %v], want [false true]", out[0].Disabled, out[1].Disabled)
 	}
 }
 
@@ -127,10 +185,10 @@ func Test_Picker_ReconcileStates(t *testing.T) {
 
 	// buildPicker reconciles on construction.
 	m := buildPicker("t", []pickItem{
-		{svc: config.Service{Name: "api"}, keep: true},
-		{svc: config.Service{Name: "db"}, keep: true},
-		{svc: config.Service{Name: "empty"}, keep: true},
-		{svc: config.Service{Name: "worker"}, keep: true},
+		{svc: config.Service{Name: "api"}, enabled: true},
+		{svc: config.Service{Name: "db"}, enabled: true},
+		{svc: config.Service{Name: "empty"}, enabled: true},
+		{svc: config.Service{Name: "worker"}, enabled: true},
 	}, 0, false, pm)
 
 	if m.items[0].state != probeDone || len(m.items[0].svc.Ports) != 1 {
@@ -157,7 +215,7 @@ func Test_Picker_EditedPortsSurviveReconcile(t *testing.T) {
 	// probe result must not clobber that edit when the picker is rebuilt.
 	// buildPicker reconciles on construction, which is exactly that rebuild.
 	m := buildPicker("t", []pickItem{
-		{svc: config.Service{Name: "web", Ports: []config.Port{config.LiteralPort(3000)}}, keep: true, edited: true},
+		{svc: config.Service{Name: "web", Ports: []config.Port{config.LiteralPort(3000)}}, enabled: true, edited: true},
 	}, 0, false, pm)
 
 	if got := m.items[0].svc.Ports; len(got) != 1 || got[0] != config.LiteralPort(3000) {
@@ -174,7 +232,7 @@ func Test_Picker_ReprobeClearsEditedAndOverwrites(t *testing.T) {
 	})
 	// a hand-edited service (edited=true) whose ports the user trimmed.
 	m := buildPicker("t", []pickItem{
-		{svc: config.Service{Name: "web", Ports: []config.Port{config.LiteralPort(3000)}}, keep: true, edited: true},
+		{svc: config.Service{Name: "web", Ports: []config.Port{config.LiteralPort(3000)}}, enabled: true, edited: true},
 	}, 0, false, pm)
 
 	// pressing `p` is an explicit opt-in: it must clear edited so the fresh
@@ -197,8 +255,8 @@ func Test_Picker_ProbeKeyStartsSelectedOnly(t *testing.T) {
 		return []config.Port{config.LiteralPort(9000)}, nil
 	})
 	m := buildPicker("t", []pickItem{
-		{svc: config.Service{Name: "api"}, keep: true},
-		{svc: config.Service{Name: "off"}, keep: false},
+		{svc: config.Service{Name: "api"}, enabled: true},
+		{svc: config.Service{Name: "off"}, enabled: false},
 	}, 0, false, pm)
 
 	m = send(m, keyMsg("p"))
@@ -215,12 +273,12 @@ func Test_Picker_ProbeKeyStartsSelectedOnly(t *testing.T) {
 
 func Test_Picker_View_NoPanic(t *testing.T) {
 	m := buildPicker("blink init", []pickItem{
-		{svc: config.Service{Name: "api", Runtime: "go", Go: &config.GoConfig{Package: ".", Args: []string{"serve"}}}, keep: true},
-		{svc: config.Service{Name: "db", Runtime: "docker"}, keep: false},
+		{svc: config.Service{Name: "api", Runtime: "go", Go: &config.GoConfig{Package: ".", Args: []string{"serve"}}}, enabled: true},
+		{svc: config.Service{Name: "db", Runtime: "docker"}, enabled: false},
 	}, 0, false, nil)
 	m.width = 100
 	out := m.View()
-	for _, want := range []string{"selected 1/2 services", "SERVICE", "RUNTIME", "COMMAND", "PORTS", "go run . serve"} {
+	for _, want := range []string{"enabled 1/2 services", "SERVICE", "RUNTIME", "COMMAND", "PORTS", "go run . serve", "(disabled)"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("View() missing %q in:\n%s", want, out)
 		}

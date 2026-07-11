@@ -67,7 +67,10 @@ func (c *InitCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
 		return scanServicesAt(options.Cwd, path)
 	}
 
-	kept, err := configform.PickServices("blink init", services, nil, scanPathFn, probeFn)
+	kept, err := configform.PickServices("blink init", services, configform.PickOptions{
+		ScanPathFn: scanPathFn,
+		ProbeFn:    probeFn,
+	})
 	if err != nil {
 		if errors.Is(err, configform.ErrCanceled) {
 			fmt.Println("aborted, nothing written")

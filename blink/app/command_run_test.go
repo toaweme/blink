@@ -44,6 +44,18 @@ func Test_LoadRunConfig_LogsOverride(t *testing.T) {
 	}
 }
 
+func Test_EnabledServices(t *testing.T) {
+	all := []config.Service{
+		{Name: "web"},
+		{Name: "worker", Disabled: true},
+		{Name: "db"},
+	}
+	got := enabledServices(all)
+	if len(got) != 2 || got[0].Name != "web" || got[1].Name != "db" {
+		t.Fatalf("enabledServices dropped the wrong entries: %+v", got)
+	}
+}
+
 func Test_ScopeServices(t *testing.T) {
 	all := []config.Service{{Name: "web"}, {Name: "api"}, {Name: "db"}}
 

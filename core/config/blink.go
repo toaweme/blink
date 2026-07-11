@@ -177,6 +177,11 @@ type Control struct {
 // Service is a single supervised unit (a long-running process or a one-shot).
 type Service struct {
 	Name string `yaml:"name,omitempty" json:"name,omitempty" toml:"name,omitempty"`
+	// Disabled keeps a service in the config but excludes it from a run: the
+	// supervisor never starts it and it does not appear in the TUI. Deselecting a
+	// service in `blink edit` sets this instead of deleting the entry, so its
+	// configuration survives and re-selecting it clears the flag.
+	Disabled bool `yaml:"disabled,omitempty" json:"disabled,omitempty" toml:"disabled,omitempty"`
 	// Dir is the service directory relative to Config.DirRoot.
 	Dir string `yaml:"dir,omitempty" json:"dir,omitempty" toml:"dir,omitempty"`
 	// Runtime selects the lifecycle owner for this service. Empty = "shell"
