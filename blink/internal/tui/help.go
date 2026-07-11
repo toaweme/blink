@@ -94,9 +94,9 @@ func (m *Model) renderHelpKeyboard() string {
 		"",
 		title.Render("navigation (fixed)"),
 		pair("1-9", "jump to tab"),
+		pair("↑ / ↓", "scroll"),
 		pair("pgup / pgdn", "page up / down"),
-		pair("ctrl+u / ctrl+d", "half-page up / down"),
-		pair("g / G", "scroll to top / bottom"),
+		pair("home / end", "scroll to top / bottom"),
 	)
 	return strings.Join(lines, "\n")
 }
