@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/toaweme/log"
 	"gopkg.in/yaml.v3"
 )
 
@@ -56,13 +57,22 @@ func (p Port) String() string {
 }
 
 // ResolvePorts resolves every entry against env, dropping any that cannot be
-// resolved to a valid port.
+// resolved to a valid port. A dropped entry is logged at warn level naming the
+// offending reference or literal, so a typo'd env-var name never disappears
+// silently and leaves callers (like portkill) scanning nothing.
 func ResolvePorts(ports []Port, env map[string]string) []int {
 	out := make([]int, 0, len(ports))
 	for _, p := range ports {
-		if n, ok := p.Resolve(env); ok {
-			out = append(out, n)
+		n, ok := p.Resolve(env)
+		if !ok {
+			if p.EnvKey != "" {
+				log.Warn("dropping unresolved port reference", "env", p.EnvKey)
+			} else {
+				log.Warn("dropping out-of-range port literal", "port", p.Value)
+			}
+			continue
 		}
+		out = append(out, n)
 	}
 	return out
 }

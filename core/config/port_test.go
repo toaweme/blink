@@ -1,9 +1,12 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
+	"github.com/toaweme/log"
 	"gopkg.in/yaml.v3"
 )
 
@@ -108,5 +111,59 @@ func Test_ResolvePorts_DropsUnresolvable(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("ResolvePorts = %v, want %v", got, want)
 		}
+	}
+}
+
+// Test_ResolvePorts_SurfacesDropped asserts that every dropped entry is logged
+// at warn level naming the offending reference or literal, so a typo'd env-var
+// name is never silently swallowed.
+func Test_ResolvePorts_SurfacesDropped(t *testing.T) {
+	tests := []struct {
+		name  string
+		ports []Port
+		env   map[string]string
+		// want is a substring the captured log output must contain, or "" when
+		// nothing should be logged.
+		want string
+	}{
+		{
+			name:  "unresolved reference is named",
+			ports: []Port{EnvPort("MISSING_PORT")},
+			env:   map[string]string{},
+			want:  "MISSING_PORT",
+		},
+		{
+			name:  "out-of-range literal is named",
+			ports: []Port{LiteralPort(99999)},
+			env:   map[string]string{},
+			want:  "99999",
+		},
+		{
+			name:  "resolvable entries log nothing",
+			ports: []Port{LiteralPort(8080), EnvPort("PORT")},
+			env:   map[string]string{"PORT": "9090"},
+			want:  "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			restore := log.Default()
+			log.SetDefault(log.New(log.WithText(&buf)))
+			defer log.SetDefault(restore)
+
+			ResolvePorts(tt.ports, tt.env)
+
+			out := buf.String()
+			if tt.want == "" {
+				if out != "" {
+					t.Fatalf("ResolvePorts logged %q, want no output", out)
+				}
+				return
+			}
+			if !strings.Contains(out, tt.want) {
+				t.Fatalf("ResolvePorts log = %q, want substring %q", out, tt.want)
+			}
+		})
 	}
 }
