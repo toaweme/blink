@@ -55,8 +55,10 @@ func goService(name, pkg, file string) Detected {
 			Name:    name,
 			Runtime: "go",
 			Go:      &config.GoConfig{Package: pkg},
-			Fs:      config.Fs{Extensions: []string{"go"}},
-			Reload:  config.Reload{Reload: true},
+			// extensions are left unset so the go runtime default (go, mod, sum)
+			// applies. Writing only [go] here made a generated service ignore
+			// go.mod/go.sum edits while a hand-written `runtime: go` watched them.
+			Reload: config.Reload{Reload: true},
 		},
 		Source: "go",
 		File:   file,

@@ -103,6 +103,64 @@ func Test_Node_Prepare(t *testing.T) {
 	}
 }
 
+// Test_Node_PrepareScriptFallback asserts an unset script resolves the way the
+// detector does: "dev" when present, else "start" from the service's
+// package.json, and the historical "dev" default when the file is missing or
+// defines neither. This keeps a hand-written `runtime: node` on a start-only
+// project from synthesizing a failing `<pm> run dev`.
+func Test_Node_PrepareScriptFallback(t *testing.T) {
+	tests := []struct {
+		name    string
+		pkg     string // "" means no package.json is written
+		wantRun string
+	}{
+		{
+			name:    "start-only project runs start",
+			pkg:     `{"scripts":{"start":"node server.js"}}`,
+			wantRun: "npm run start",
+		},
+		{
+			name:    "dev is preferred over start",
+			pkg:     `{"scripts":{"dev":"vite","start":"node server.js"}}`,
+			wantRun: "npm run dev",
+		},
+		{
+			name:    "no scripts falls back to dev",
+			pkg:     `{"scripts":{"build":"tsc"}}`,
+			wantRun: "npm run dev",
+		},
+		{
+			name:    "missing package.json falls back to dev",
+			pkg:     "",
+			wantRun: "npm run dev",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if tt.pkg != "" {
+				if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(tt.pkg), 0o600); err != nil {
+					t.Fatalf("write package.json: %v", err)
+				}
+			}
+
+			svc := config.Service{Name: "web", Dir: "."}
+			plan, err := Runtime{}.Prepare(config.Config{DirRoot: dir}, svc)
+			if err != nil {
+				t.Fatalf("Prepare: %v", err)
+			}
+			run := plan.Defaults.Commands.Run
+			if run == nil {
+				t.Fatal("Run command is nil")
+			}
+			if run.Command != tt.wantRun {
+				t.Fatalf("Run.Command = %q, want %q", run.Command, tt.wantRun)
+			}
+		})
+	}
+}
+
 func Test_Node_PrepareExtensions(t *testing.T) {
 	plan, err := Runtime{}.Prepare(config.Config{DirRoot: t.TempDir()}, config.Service{Dir: "."})
 	if err != nil {
