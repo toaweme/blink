@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -45,10 +46,17 @@ func (b *Blink) Run(cfg config.Config) error {
 	// log writing is a Hub subscriber, orthogonal to the TUI render path. The
 	// model gets the dir, initial state, and a toggle so L flips it live.
 	sink := newLogSink(cfg.Paths.LogDir, cfg.LogWriteEnabled())
+	// filepath.Abs turns an empty or relative dir_root (zero-config runs from the
+	// project dir) into the real cwd, so the help header shows a meaningful path.
+	projectPath := cfg.DirRoot
+	if abs, err := filepath.Abs(projectPath); err == nil {
+		projectPath = abs
+	}
 	model := tui.NewModel(sup.Order(), controllerAdapter{sup: sup}).
 		WithKeymap(km).
 		WithZen(cfg.Zen).
 		WithServicePorts(servicePorts(cfg)).
+		WithProjectPath(projectPath).
 		WithLogControl(cfg.Paths.LogDir, sink.Enabled(), sink.Toggle)
 	app := tui.NewApp(model)
 

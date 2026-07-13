@@ -133,6 +133,11 @@ type Model struct {
 	logsOn    bool
 	logToggle func() bool
 
+	// projectPath is the resolved project root, shown shortened on the right of
+	// the help modal header so several concurrent blink instances are easy to
+	// tell apart. Empty hides it.
+	projectPath string
+
 	// flash is a transient badge (e.g. COPIED, WRITTEN) shown in the top-right for
 	// flashDuration after an action. The pulse tick re-renders, so it fades on its
 	// own without a timer.

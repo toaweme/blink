@@ -50,6 +50,14 @@ func (m *Model) WithServicePorts(ports map[string][]int) *Model {
 	return m
 }
 
+// WithProjectPath records the project root shown (shortened to its last two
+// path segments) on the right of the help modal header, so several concurrent
+// blink instances can be told apart at a glance. Empty leaves it hidden.
+func (m *Model) WithProjectPath(path string) *Model {
+	m.projectPath = path
+	return m
+}
+
 // NewApp wraps a model in a runnable bubbletea program in the alt-screen.
 // Mouse capture stays off so the terminal keeps native text selection. With it
 // on, every drag goes to the app instead and select-to-copy breaks. The wheel
