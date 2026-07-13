@@ -400,7 +400,9 @@ func (w *Watcher) extOK(path string) bool {
 	if len(w.extensions) == 0 {
 		return true
 	}
-	ext := strings.TrimPrefix(filepath.Ext(path), ".")
+	// lowercase the file's own extension so matching is case-insensitive
+	// against the (already lowercased) configured set.
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
 	_, ok := w.extensions[ext]
 	return ok
 }
