@@ -44,6 +44,25 @@ func Test_Validate(t *testing.T) {
 			wantErr: `service "a" depends on itself`,
 		},
 		{
+			name: "unknown package manager",
+			cfg: config.Config{Services: []config.Service{
+				{Name: "web", Node: &config.NodeConfig{PackageManager: "deno"}},
+			}},
+			wantErr: `service "web" has unknown package_manager "deno"`,
+		},
+		{
+			name: "known package manager",
+			cfg: config.Config{Services: []config.Service{
+				{Name: "web", Node: &config.NodeConfig{PackageManager: "pnpm"}},
+			}},
+		},
+		{
+			name: "empty package manager auto-detects",
+			cfg: config.Config{Services: []config.Service{
+				{Name: "web", Node: &config.NodeConfig{PackageManager: ""}},
+			}},
+		},
+		{
 			name: "valid",
 			cfg: config.Config{Services: []config.Service{
 				{Name: "a"},

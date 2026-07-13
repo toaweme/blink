@@ -2,9 +2,15 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 )
+
+// ErrInvalidConfig is the sentinel wrapped by load-time validation failures, so
+// callers can errors.Is against a stable value regardless of which field was
+// rejected.
+var ErrInvalidConfig = errors.New("invalid config")
 
 // Paths declares every directory and file blink reads or writes. ControlDir is
 // the per-project root the other per-project paths derive from; their default
@@ -16,8 +22,8 @@ type Paths struct {
 	// CLI preferences). Default: <blinkDirName> under $HOME. Env: $BLINK_CONFIG_HOME.
 	ConfigHome string `yaml:"config_home,omitempty" json:"config_home,omitempty" toml:"config_home,omitempty"`
 	// ControlDir is the per-project root for everything blink writes under the
-	// project: logs, build output, and (later) the unix control socket. It is
-	// the one directory the other per-project paths derive from. Default:
+	// project (logs and build output). It is the one directory the other
+	// per-project paths derive from. Default:
 	// <blinkDirName> under DirRoot. Env: $BLINK_CONTROL_DIR.
 	ControlDir string `yaml:"control_dir,omitempty" json:"control_dir,omitempty" toml:"control_dir,omitempty"`
 	// LogDir is where per-service .log files are written. Default:
@@ -47,18 +53,35 @@ const (
 // LogDir and BuildDir from ControlDir. Call after loading the config and before
 // anything reads a path.
 func (p *Paths) Resolve(dirRoot string) {
-	if p.ConfigHome == "" {
-		p.ConfigHome = os.Getenv(envPrefix + "CONFIG_HOME")
-	}
-	if p.ConfigHome == "" {
-		if home, _ := os.UserHomeDir(); home != "" {
-			p.ConfigHome = filepath.Join(home, blinkDirName)
-		}
-	}
+	home, _ := os.UserHomeDir()
+	p.ConfigHome = resolveUserDir(p.ConfigHome, "CONFIG_HOME", home)
 
 	p.ControlDir = resolveDir(p.ControlDir, "CONTROL_DIR", dirRoot, filepath.Join(dirRoot, blinkDirName))
 	p.LogDir = resolveDir(p.LogDir, "LOG_DIR", dirRoot, filepath.Join(p.ControlDir, logSubdir))
 	p.BuildDir = resolveDir(p.BuildDir, "BUILD_DIR", dirRoot, filepath.Join(p.ControlDir, buildSubdir))
+}
+
+// resolveUserDir picks the directory for the user-scoped ConfigHome: the value
+// already set (config file) wins, else the $BLINK_CONFIG_HOME override, else
+// <home>/.blink. A relative override resolves against home, not the process cwd
+// or the project dir_root, so it stays consistent with ConfigHome's user scope.
+// An empty home leaves a relative value untouched (best effort) and yields ""
+// when nothing was set.
+func resolveUserDir(current, name, home string) string {
+	v := current
+	if v == "" {
+		v = os.Getenv(envPrefix + name)
+	}
+	if v == "" {
+		if home == "" {
+			return ""
+		}
+		return filepath.Join(home, blinkDirName)
+	}
+	if !filepath.IsAbs(v) && home != "" {
+		return filepath.Join(home, v)
+	}
+	return v
 }
 
 // resolveDir picks the directory for one path field: the value already set
@@ -104,11 +127,10 @@ type Config struct {
 	// Empty fields are filled with defaults (and any $BLINK_* env override)
 	// by Paths.Resolve().
 	Paths Paths `yaml:"paths,omitempty" json:"paths,omitempty" toml:"paths,omitempty"`
-	// UI selects the user interface implementation: "blink" (default TUI),
-	// "plain" (line-prefixed stdout), "iterm2" (stub).
+	// UI selects the user interface backend: "blink" (default TUI), "plain"
+	// (line-prefixed stdout), or "headless" (no interactive UI, with "none" as
+	// an alias for headless).
 	UI string `yaml:"ui,omitempty" json:"ui,omitempty" toml:"ui,omitempty"`
-	// UIStrategy is reserved for future split/tab layout options.
-	UIStrategy string `yaml:"ui_strategy,omitempty" json:"ui_strategy,omitempty" toml:"ui_strategy,omitempty"`
 	// DirRoot is the project root all service Dir/Include paths resolve against.
 	DirRoot string `yaml:"dir_root,omitempty" json:"dir_root,omitempty" toml:"dir_root,omitempty"`
 	// Services is the ordered list of services blink supervises.
@@ -121,9 +143,8 @@ type Config struct {
 	// ForceShutdown has its declared Ports scanned and any owning process killed
 	// before start. Override per service with Service.ForceShutdown.
 	ForceShutdown *bool `yaml:"force_shutdown,omitempty" json:"force_shutdown,omitempty" toml:"force_shutdown,omitempty"`
-	// Control configures the local shell-proxy, disabled by default. When
-	// enabled, a Unix socket lets other processes send stdin or signals to
-	// supervised services.
+	// Control configures TUI key rebindings (see Control.Keys), remapping the
+	// default keys onto blink's action catalog. Empty leaves the defaults.
 	Control Control `yaml:"control,omitempty" json:"control,omitempty" toml:"control,omitempty"`
 	// Logs configures per-service log-file writing, independent of the UI. While
 	// enabled, every mode writes <LogDir>/<svc>.log. The --logs/--no-logs flags
@@ -201,8 +222,6 @@ type Service struct {
 	// Reload describes restart behavior and cross-service dependencies.
 	Reload Reload            `yaml:"reload,omitempty" json:"reload,omitempty" toml:"reload,omitempty"`
 	Env    map[string]string `yaml:"env,omitempty" json:"env,omitempty" toml:"env,omitempty"`
-	// Logging configures per-service log handling
-	Logging Logging `yaml:"logging,omitempty" json:"logging,omitempty" toml:"logging,omitempty"`
 	// Ports lists TCP ports this service binds. When ForceShutdown is on, blink
 	// scans them before start and kills any process already listening, so a
 	// previous hanging child does not break the next run.
@@ -306,8 +325,11 @@ type Command struct {
 	Dir            string    `yaml:"dir,omitempty" json:"dir,omitempty" toml:"dir,omitempty"`
 	Before         []Command `yaml:"before,omitempty" json:"before,omitempty" toml:"before,omitempty"`
 	After          []Command `yaml:"after,omitempty" json:"after,omitempty" toml:"after,omitempty"`
-	// Service marks Command as a long-running process. The supervisor keeps it
-	// alive and restarts it on file change; one-shot commands run to completion.
+	// Service marks Command as a long-running process. Its only effect is that
+	// when the process exits, the After chain is skipped (a service is not
+	// expected to run to completion, so its teardown steps do not fire on exit).
+	// It does not respawn the process. Restart-on-change comes from reload.reload,
+	// not from this flag.
 	Service bool `yaml:"service,omitempty" json:"service,omitempty" toml:"service,omitempty"`
 }
 
@@ -318,8 +340,12 @@ type Commands struct {
 	// ordinary source-file reload. It is where one-time preparation like
 	// dependency installs belongs, so a live reload stays fast.
 	Setup []Command `yaml:"setup,omitempty" json:"setup,omitempty" toml:"setup,omitempty"`
-	Build *Command  `yaml:"build,omitempty" json:"build,omitempty" toml:"build,omitempty"`
-	Run   *Command  `yaml:"run,omitempty" json:"run,omitempty" toml:"run,omitempty"`
+	// Build runs before the run command on every boot and again on every
+	// restart, unlike Setup which runs on boot and only on a manifest trigger.
+	// It is where recompilation belongs, so each (re)start runs against fresh
+	// build output.
+	Build *Command `yaml:"build,omitempty" json:"build,omitempty" toml:"build,omitempty"`
+	Run   *Command `yaml:"run,omitempty" json:"run,omitempty" toml:"run,omitempty"`
 }
 
 // Fs configures the file change watcher for a service. Include paths (resolved
@@ -358,10 +384,4 @@ type Reload struct {
 	// ReloadOnService cascades a restart whenever any listed service restarts.
 	// Also encodes startup ordering: this service starts after its deps.
 	ReloadOnService []string `yaml:"reload_on_service,omitempty" json:"reload_on_service,omitempty" toml:"reload_on_service,omitempty"`
-}
-
-// Logging configures per-service log handling.
-type Logging struct {
-	// Level is "trace", "debug", "info", "warn", "error" or "fatal". Empty = inherit.
-	Level string `yaml:"level,omitempty" json:"level,omitempty" toml:"level,omitempty"`
 }

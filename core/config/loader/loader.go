@@ -98,6 +98,12 @@ func Validate(cfg config.Config) error {
 	}
 
 	for _, s := range cfg.Services {
+		if s.Node != nil && !config.ValidPackageManager(s.Node.PackageManager) {
+			return fmt.Errorf("service %q has unknown package_manager %q (want npm/pnpm/yarn/bun): %w", s.Name, s.Node.PackageManager, config.ErrInvalidConfig)
+		}
+	}
+
+	for _, s := range cfg.Services {
 		for _, dep := range s.Reload.ReloadOnService {
 			if _, ok := seen[dep]; !ok {
 				return fmt.Errorf("service %q depends on unknown service %q", s.Name, dep)

@@ -9,7 +9,7 @@ import "github.com/toaweme/blink/core/config"
 //   - Pointer structs (*Command): recurse field-by-field; if one side is nil, take the other.
 //   - Slices: append(overlay, base...) so runtime-provided defaults come first and user additions are preserved.
 //   - Maps (Env): overlay seeds the map; user keys override on conflict.
-//   - Nested structs (Fs, Reload, Commands, Logging): recurse.
+//   - Nested structs (Fs, Reload, Commands): recurse.
 //
 // Name, Dir and Runtime come from base: the user always names and places their
 // own service, even when a runtime is involved.
@@ -24,7 +24,6 @@ func MergeService(base, overlay config.Service) config.Service {
 	out.Fs = mergeFs(base.Fs, overlay.Fs)
 	out.Reload = mergeReload(base.Reload, overlay.Reload)
 	out.Env = mergeEnv(base.Env, overlay.Env)
-	out.Logging = mergeLogging(base.Logging, overlay.Logging)
 	out.Ports = dedupPorts(append(append([]config.Port{}, overlay.Ports...), base.Ports...))
 	if base.ForceShutdown == nil {
 		out.ForceShutdown = overlay.ForceShutdown
@@ -122,14 +121,6 @@ func mergeEnv(base, overlay map[string]string) map[string]string {
 	}
 	for k, v := range base {
 		out[k] = v
-	}
-	return out
-}
-
-func mergeLogging(base, overlay config.Logging) config.Logging {
-	out := base
-	if out.Level == "" {
-		out.Level = overlay.Level
 	}
 	return out
 }
