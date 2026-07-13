@@ -16,13 +16,13 @@ import (
 
 // RunConfig holds the flags the supervise-services command accepts.
 type RunConfig struct {
-	Config        string `arg:"config"         short:"c" env:"BLINK_CONFIG"         help:"Path to the blink config (yml/yaml/toml/json). Walks up from cwd when empty."`
-	UI            string `arg:"ui"             short:"u" env:"BLINK_UI"             help:"Override UI: blink, plain, headless (alias: none)."`
-	Zen           bool   `arg:"zen"            short:"z" env:"BLINK_ZEN"            help:"Start the TUI in zen mode (native scrollback, no chrome)."`
-	ForceShutdown string `arg:"force-shutdown" short:"k" env:"BLINK_FORCE_SHUTDOWN" help:"Override force-shutdown: on (kill anything bound to declared ports before start), off (never). Default on."`
-	Logs          string `arg:"logs"           short:"l" env:"BLINK_LOGS"           help:"Override log writing: on (write <LogDir>/<svc>.log), off (write nothing). Overrides the config's logs.write. Default on."`
+	Config        string `arg:"config"         short:"c" env:"BLINK_CONFIG" help:"Path to the blink config (yml/yaml/toml/json). Walks up from cwd when empty."`
+	UI            string `arg:"ui"             short:"u" help:"Override UI: blink, plain, headless (alias: none)."`
+	Zen           bool   `arg:"zen"            short:"z" help:"Start the TUI in zen mode (native scrollback, no chrome)."`
+	ForceShutdown string `arg:"force-shutdown" short:"k" help:"Override force-shutdown: on (kill anything bound to declared ports before start), off (never). Default on."`
+	Logs          string `arg:"logs"           short:"l" help:"Override log writing: on (write <LogDir>/<svc>.log), off (write nothing). Overrides the config's logs.write. Default on."`
 
-	Services []string `arg:"services" short:"s" sep:"," env:"BLINK_SERVICES" help:"Comma-separated list of services to start (subset of the config). Empty starts all."`
+	Services []string `arg:"services" short:"s" sep:"," help:"Comma-separated list of services to start (subset of the config). Empty starts all."`
 }
 
 // RunCommand supervises the services defined in blink.yaml with live reload.

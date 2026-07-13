@@ -19,8 +19,8 @@ import (
 
 // InitConfig holds the flags the init command accepts.
 type InitConfig struct {
-	Config string `arg:"config" short:"c" env:"BLINK_CONFIG"      default:"blink.yml" help:"Config file to create; extension picks the format (.yml/.yaml, .toml, .json)."`
-	Force  bool   `arg:"force"  short:"f" env:"BLINK_INIT_FORCE"                      help:"Overwrite an existing file."`
+	Config string `arg:"config" short:"c" env:"BLINK_CONFIG" default:"blink.yml" help:"Config file to create; extension picks the format (.yml/.yaml, .toml, .json)."`
+	Force  bool   `arg:"force"  short:"f" help:"Overwrite an existing file."`
 }
 
 // InitCommand scans the project and interactively creates a new blink.yml.
