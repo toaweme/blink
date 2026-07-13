@@ -5,6 +5,41 @@ All notable changes to this project are documented here, newest first.
 Entries are generated from [Conventional Commits](https://www.conventionalcommits.org)
 and grouped by change type. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-07-13
+
+### Features
+
+- Show the project path in the help modal header by [@iberflow](https://github.com/iberflow) in [00f8243](https://github.com/toaweme/blink/commit/00f824323a618da182facf21c18e41771a18c99e).
+- Disable builtin bubbles scroll keys by [@iberflow](https://github.com/iberflow) in [857e12d](https://github.com/toaweme/blink/commit/857e12df56164c4f444ce113c11b4827e6346107).
+- Allow disabling services by [@iberflow](https://github.com/iberflow) in [4c8fe3a](https://github.com/toaweme/blink/commit/4c8fe3a8dd92909b52c691e3f09ca14c3a00a880).
+
+### Fixes
+
+- Show port and reload warnings in the TUI, not just plain mode by [@iberflow](https://github.com/iberflow) in [0caf7ab](https://github.com/toaweme/blink/commit/0caf7ab56d6d4d713aef630ea2132b3e70735c28).
+- Report a crashed dependency instead of waiting for it forever by [@iberflow](https://github.com/iberflow) in [4503d18](https://github.com/toaweme/blink/commit/4503d182d764428f40e0e7d5ff5fad23a69e036c).
+- Make hand-written go/node/docker config work like blink init by [@iberflow](https://github.com/iberflow) in [38800f2](https://github.com/toaweme/blink/commit/38800f23c1d4b9b36ac8219b51d044dc83ff5aa1).
+- Honor zen from the config file and reject invalid on/off values by [@iberflow](https://github.com/iberflow) in [51eeba5](https://github.com/toaweme/blink/commit/51eeba527f47033d67814421998780de7e10088e).
+- Remove config options that did nothing and validate package_manager by [@iberflow](https://github.com/iberflow) in [34a760c](https://github.com/toaweme/blink/commit/34a760c7627a6084d5053fa714c1681b14ade88a).
+- Warn when a port set via an env var cannot be resolved by [@iberflow](https://github.com/iberflow) in [8faeeea](https://github.com/toaweme/blink/commit/8faeeeaf869f88d54b33d51d1fe22026ada743a0).
+- Correct wrong key labels and action names in the help modal by [@iberflow](https://github.com/iberflow) in [e304780](https://github.com/toaweme/blink/commit/e30478000e607c800e9b2e3b3ae7cfc31aab3744).
+- Match watched file extensions no matter the case by [@iberflow](https://github.com/iberflow) in [ea97fde](https://github.com/toaweme/blink/commit/ea97fde1f1b476994244c9c78d03e87d1e3b4ceb).
+
+### Documentation
+
+- Add a full configuration reference guide by [@iberflow](https://github.com/iberflow) in [8212aca](https://github.com/toaweme/blink/commit/8212acadd364a24e7124284ec6ae017f781a6eaa).
+
+### Refactors
+
+- Drop the env vars that only mirror flags, keep config and paths by [@iberflow](https://github.com/iberflow) in [7db9722](https://github.com/toaweme/blink/commit/7db97229595a3be7673795fcaadfa8414096d55b).
+
+### CI & Build
+
+- Publish code.json via codereport action by [@iberflow](https://github.com/iberflow) in [#5](https://github.com/toaweme/blink/pull/5).
+
+### Chores & Other
+
+- Fix parseToggle linter issue by [@iberflow](https://github.com/iberflow) in [d2ba10c](https://github.com/toaweme/blink/commit/d2ba10c6a519958748c08122deacf2f68573946b).
+
 ## [0.4.0] - 2026-07-10
 
 ### Features
@@ -140,6 +175,7 @@ and grouped by change type. This project adheres to [Semantic Versioning](https:
 - Bump deps by [@iberflow](https://github.com/iberflow) in [8678e08](https://github.com/toaweme/blink/commit/8678e08f4f4027ca1d983fa388704052e276a35e).
 - Freeze go 1.26.4 by [@iberflow](https://github.com/iberflow) in [c846eee](https://github.com/toaweme/blink/commit/c846eeefe2e0ed9afc11748e172443acdfacc85e).
 
+[0.5.0]: https://github.com/toaweme/blink/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/toaweme/blink/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/toaweme/blink/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/toaweme/blink/compare/v0.2.0...v0.2.1
