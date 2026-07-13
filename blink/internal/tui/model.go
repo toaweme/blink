@@ -133,6 +133,11 @@ type Model struct {
 	logsOn    bool
 	logToggle func() bool
 
+	// projectPath is the resolved project root, shown shortened on the right of
+	// the help modal header so several concurrent blink instances are easy to
+	// tell apart. Empty hides it.
+	projectPath string
+
 	// flash is a transient badge (e.g. COPIED, WRITTEN) shown in the top-right for
 	// flashDuration after an action. The pulse tick re-renders, so it fades on its
 	// own without a timer.
@@ -356,6 +361,9 @@ func (m *Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	w, h := m.viewportSize()
 	if !m.ready {
 		m.vp = viewport.New(w, h)
+		// drop the viewport's built-in keymap (f/b/u/d/j)
+		// navigation is arrows, fn (pgup/pgdn/home/end) and the touchpad
+		m.vp.KeyMap = viewport.KeyMap{}
 		m.ready = true
 	} else {
 		m.vp.Width = w
@@ -533,25 +541,7 @@ func (m *Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.vp.PageDown()
 		m.followTail = m.vp.AtBottom()
 		return m, nil
-	case "ctrl+u":
-		if m.cursorMode {
-			m.moveCursor(-m.vp.Height / 2)
-			m.refreshViewport()
-			return m, nil
-		}
-		m.vp.HalfPageUp()
-		m.followTail = m.vp.AtBottom()
-		return m, nil
-	case "ctrl+d":
-		if m.cursorMode {
-			m.moveCursor(m.vp.Height / 2)
-			m.refreshViewport()
-			return m, nil
-		}
-		m.vp.HalfPageDown()
-		m.followTail = m.vp.AtBottom()
-		return m, nil
-	case "home", "g":
+	case "home":
 		if m.cursorMode {
 			m.jumpCursorTo(0)
 			m.refreshViewport()
@@ -560,7 +550,7 @@ func (m *Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.vp.GotoTop()
 		m.followTail = false
 		return m, nil
-	case "end", "G":
+	case "end":
 		if m.cursorMode {
 			m.jumpCursorTo(len(m.buffers[m.viewKey()]) - 1)
 			m.refreshViewport()

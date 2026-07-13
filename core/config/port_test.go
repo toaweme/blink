@@ -110,3 +110,53 @@ func Test_ResolvePorts_DropsUnresolvable(t *testing.T) {
 		}
 	}
 }
+
+// Test_UnresolvedPortRefs asserts every dropped entry is named (an env-var name
+// for an unresolved reference, the decimal for an out-of-range literal) so the
+// supervisor can surface a typo instead of the port silently disappearing.
+func Test_UnresolvedPortRefs(t *testing.T) {
+	tests := []struct {
+		name  string
+		ports []Port
+		env   map[string]string
+		want  []string
+	}{
+		{
+			name:  "unresolved reference is named",
+			ports: []Port{EnvPort("MISSING_PORT")},
+			env:   map[string]string{},
+			want:  []string{"MISSING_PORT"},
+		},
+		{
+			name:  "out-of-range literal is named",
+			ports: []Port{LiteralPort(99999)},
+			env:   map[string]string{},
+			want:  []string{"99999"},
+		},
+		{
+			name:  "resolvable entries yield nothing",
+			ports: []Port{LiteralPort(8080), EnvPort("PORT")},
+			env:   map[string]string{"PORT": "9090"},
+			want:  nil,
+		},
+		{
+			name:  "mixed keeps only the bad ones in order",
+			ports: []Port{EnvPort("PORT"), EnvPort("NOPE"), LiteralPort(70000)},
+			env:   map[string]string{"PORT": "9090"},
+			want:  []string{"NOPE", "70000"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := UnresolvedPortRefs(tt.ports, tt.env)
+			if len(got) != len(tt.want) {
+				t.Fatalf("UnresolvedPortRefs = %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("UnresolvedPortRefs = %v, want %v", got, tt.want)
+				}
+			}
+		})
+	}
+}

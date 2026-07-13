@@ -12,8 +12,8 @@ import (
 
 // NukeConfig holds the flags the nuke command accepts.
 type NukeConfig struct {
-	Yes    bool `arg:"yes"    short:"y" env:"BLINK_NUKE_YES"    help:"Skip confirmation prompt."`
-	Global bool `arg:"global" short:"g" env:"BLINK_NUKE_GLOBAL" help:"Also remove user-scoped state (~/.blink), affecting every project."`
+	Yes    bool `arg:"yes"    short:"y" help:"Skip confirmation prompt."`
+	Global bool `arg:"global" short:"g" help:"Also remove user-scoped state (~/.blink), affecting every project."`
 }
 
 // NukeCommand removes all resolved blink state and config so the next run

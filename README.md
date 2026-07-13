@@ -82,14 +82,14 @@ blink run -k off                 # don't kill processes bound to declared ports
 blink run -l off                 # don't write per-service log files
 ```
 
-| Flag | Short | Env | Meaning |
-| --- | --- | --- | --- |
-| `--config` | `-c` | `BLINK_CONFIG` | Config path; walks up from cwd when empty |
-| `--ui` | `-u` | `BLINK_UI` | `blink`, `plain`, or `headless` (alias `none`) |
-| `--services` | `-s` | `BLINK_SERVICES` | Comma-separated subset of services to start |
-| `--zen` | `-z` | `BLINK_ZEN` | Start the TUI in zen mode |
-| `--force-shutdown` | `-k` | `BLINK_FORCE_SHUTDOWN` | `on` kills anything on declared ports before start, `off` never does (default on) |
-| `--logs` | `-l` | `BLINK_LOGS` | `on`/`off` per-service log files at `<LogDir>/<svc>.log` (default on) |
+| Flag | Short | Meaning |
+| --- | --- | --- |
+| `--config` | `-c` | Config path; walks up from cwd when empty (also `$BLINK_CONFIG`) |
+| `--ui` | `-u` | `blink`, `plain`, or `headless` (alias `none`) |
+| `--services` | `-s` | Comma-separated subset of services to start |
+| `--zen` | `-z` | Start the TUI in zen mode |
+| `--force-shutdown` | `-k` | `on` kills anything on declared ports before start, `off` never does (default on) |
+| `--logs` | `-l` | `on`/`off` per-service log files at `<LogDir>/<svc>.log` (default on) |
 
 ### `blink init` / `blink edit`
 
@@ -139,6 +139,8 @@ services:
 Each service picks a `runtime`: `shell` (default, runs your `commands` as `sh -c`), `go`, `node`, or `docker`. A runtime contributes sensible defaults (build/run commands, watched extensions, install steps) that anything you set explicitly overrides. `reload_on_service` both orders startup and cascades restarts; `ports` drive port reclaiming; `commands.setup` runs once on boot and again only when a trigger file like `package.json` changes, keeping live reloads fast.
 
 State (logs, build output) lives under a per-project `.blink/` dir; user-scoped config lives in `~/.blink`. Any path can be overridden via config or `$BLINK_*` env vars.
+
+[CONFIGURATION.md](CONFIGURATION.md) documents every field, default, runtime block, and env var. Three behaviors are worth noting. Live reload is not implied by a runtime, so a `shell` service that should restart on edits needs an explicit `reload: true` and an `fs` block (`go`/`node`/`docker` set this up for you). `force_shutdown` defaults on, so a service's declared `ports` are reclaimed before it starts. `docker` services keep their containers warm between runs unless you set `stop_on_exit: true`.
 
 ## TUI
 

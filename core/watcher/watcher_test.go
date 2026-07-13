@@ -84,6 +84,39 @@ func Test_MatchesChange_SetupTrigger(t *testing.T) {
 	assert.False(t, w.anySetupTrigger([]string{js}), "a source-only change set is not a setup trigger")
 }
 
+// Test_ExtOK_CaseInsensitive verifies that a file's extension is matched
+// case-insensitively against the configured set, so Main.GO, main.Go and
+// main.go all match a configured "go" while an unlisted extension does not.
+func Test_ExtOK_CaseInsensitive(t *testing.T) {
+	cfg := config.Config{DirRoot: t.TempDir()}
+	svc := config.Service{
+		Name:   "web",
+		Dir:    ".",
+		Reload: config.Reload{Reload: true},
+		Fs:     config.Fs{Extensions: []string{"go"}},
+	}
+	w, err := New(cfg, svc)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{"uppercase extension", "Main.GO", true},
+		{"mixed case extension", "main.Go", true},
+		{"lowercase extension", "main.go", true},
+		{"unlisted extension", "main.txt", false},
+		{"unlisted uppercase extension", "main.TXT", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, w.extOK(tt.path))
+		})
+	}
+}
+
 // Test_AddRecursive_NoDoubleCount verifies that overlapping watch roots (an
 // Fs.Include directory nested under the implicit service-dir root) count each
 // file and directory exactly once, rather than once per covering root.

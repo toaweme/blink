@@ -19,8 +19,8 @@ import (
 
 // InitConfig holds the flags the init command accepts.
 type InitConfig struct {
-	Config string `arg:"config" short:"c" env:"BLINK_CONFIG"      default:"blink.yml" help:"Config file to create; extension picks the format (.yml/.yaml, .toml, .json)."`
-	Force  bool   `arg:"force"  short:"f" env:"BLINK_INIT_FORCE"                      help:"Overwrite an existing file."`
+	Config string `arg:"config" short:"c" env:"BLINK_CONFIG" default:"blink.yml" help:"Config file to create; extension picks the format (.yml/.yaml, .toml, .json)."`
+	Force  bool   `arg:"force"  short:"f" help:"Overwrite an existing file."`
 }
 
 // InitCommand scans the project and interactively creates a new blink.yml.
@@ -67,7 +67,10 @@ func (c *InitCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
 		return scanServicesAt(options.Cwd, path)
 	}
 
-	kept, err := configform.PickServices("blink init", services, nil, scanPathFn, probeFn)
+	kept, err := configform.PickServices("blink init", services, configform.PickOptions{
+		ScanPathFn: scanPathFn,
+		ProbeFn:    probeFn,
+	})
 	if err != nil {
 		if errors.Is(err, configform.ErrCanceled) {
 			fmt.Println("aborted, nothing written")

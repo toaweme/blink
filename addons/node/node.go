@@ -7,7 +7,9 @@
 package node
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/toaweme/blink/core/addon"
@@ -25,7 +27,7 @@ func (Runtime) Name() string { return "node" }
 
 // Prepare synthesizes the run command (and a guarded install step) for a node
 // service, defaulting the package manager from the service's lockfile and the
-// script to "dev".
+// script from the service's package.json (dev, else start).
 func (r Runtime) Prepare(cfg config.Config, svc config.Service) (addon.Plan, error) {
 	nc := svc.Node
 	if nc == nil {
@@ -39,7 +41,7 @@ func (r Runtime) Prepare(cfg config.Config, svc config.Service) (addon.Plan, err
 
 	script := nc.Script
 	if script == "" {
-		script = "dev"
+		script = nodeScriptFallback(filepath.Join(cfg.DirRoot, svc.Dir))
 	}
 
 	install := true
@@ -112,6 +114,33 @@ var nodeLockfileExcludes = []string{
 // source and bare installs never modify it. A lockfile-only change (e.g. a
 // teammate bumping a transitive dep) is picked up on the next blink restart.
 var nodeSetupTriggers = []string{"package.json"}
+
+// nodeScriptFallback resolves an unset node script the way the detector does,
+// preferring "dev" and falling back to "start" when only that exists. It reads
+// dir/package.json and returns the first of those scripts present, so a
+// hand-written `runtime: node` on a start-only project runs `<pm> run start`
+// rather than a failing `<pm> run dev`. When package.json cannot be read or
+// defines neither script, it keeps the historical "dev" default. The detector's
+// pickScript lives in the unexported detect package, so the minimal
+// dev-then-start choice is mirrored here to avoid an import cycle.
+func nodeScriptFallback(dir string) string {
+	data, err := os.ReadFile(filepath.Join(dir, "package.json"))
+	if err != nil {
+		return "dev"
+	}
+	var pkg struct {
+		Scripts map[string]string `json:"scripts"`
+	}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return "dev"
+	}
+	for _, name := range []string{"dev", "start"} {
+		if _, ok := pkg.Scripts[name]; ok {
+			return name
+		}
+	}
+	return "dev"
+}
 
 func installCommand(pm string) string {
 	switch pm {

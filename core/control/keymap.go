@@ -14,7 +14,7 @@ type Keymap struct {
 }
 
 // DefaultKeymap is the shipped binding set. Multiple keys may map to the
-// same action (q and ctrl+c both quit; / and ? both open the center).
+// same action (q and ctrl+c both quit; / and ? both open the help modal).
 func DefaultKeymap() Keymap {
 	return Keymap{bindings: map[string]Action{
 		"right":      ActionNextTab,

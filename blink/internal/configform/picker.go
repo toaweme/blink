@@ -22,35 +22,47 @@ import (
 // without confirming (q / esc / ctrl+c). Callers treat it as "write nothing".
 var ErrCanceled = errors.New("canceled")
 
+// PickOptions carries the optional behaviors PickServices supports. The zero
+// value is the init-style picker: deselect omits, no re-detect, no path scan, no
+// probe.
+type PickOptions struct {
+	// DetectFn, when non-nil, enables the re-detect key (`d`) and is called to
+	// fetch fresh services to merge by name.
+	DetectFn func() ([]config.Service, error)
+	// ScanPathFn, when non-nil, enables the add-from-path key (`f`): it scans a
+	// directory the user types (absolute or relative to the project root) and
+	// returns its services, already rebased to run from there, so a single config
+	// can supervise sibling repos.
+	ScanPathFn func(string) ([]config.Service, error)
+	// ProbeFn, when non-nil, enables the port-discovery key (`p`): it probes every
+	// selected service concurrently, animating a spinner per row, and fills in the
+	// ports each bound. Probes outlive a trip into the editor (owned by a manager
+	// that spans picker re-runs), so going in and back doesn't restart them.
+	ProbeFn func(config.Service) ([]config.Port, error)
+}
+
 // PickServices runs the service picker: one screen listing every service with a
-// select checkbox, where → drills into a per-service editor and enter saves. It
-// returns the selected (and possibly edited or probed) services.
-//
-// detectFn, when non-nil, enables the re-detect key (`d`) and is called to fetch
-// fresh services to merge by name. scanPathFn, when non-nil, enables the add-
-// from-path key (`f`): it scans a directory the user types (absolute or relative
-// to the project root) and returns its services, already rebased to run from
-// there, so a single config can supervise sibling repos. probeFn, when non-nil,
-// enables the port-discovery key (`p`): it probes every selected service
-// concurrently, animating a spinner per row, and fills in the ports each bound.
-// Probes outlive a trip into the editor (owned by a manager that spans picker
-// re-runs), so going in and back doesn't restart them.
-func PickServices(title string, services []config.Service, detectFn func() ([]config.Service, error), scanPathFn func(string) ([]config.Service, error), probeFn func(config.Service) ([]config.Port, error)) ([]config.Service, error) {
+// select checkbox, where → drills into a per-service editor and enter saves.
+// Deselecting a service (`space`) keeps it in the config but marks it disabled,
+// so an over-eager detection can be trimmed down without discarding services the
+// user might enable later; `x`/`delete` removes one outright. It returns every
+// service the user kept, each carrying its resulting Disabled flag.
+func PickServices(title string, services []config.Service, opts PickOptions) ([]config.Service, error) {
 	items := make([]pickItem, 0, len(services))
 	for _, s := range services {
-		items = append(items, pickItem{svc: s, keep: true})
+		items = append(items, pickItem{svc: s, enabled: !s.Disabled})
 	}
 	cursor := 0
 	notice := ""
 
 	var probes *probeManager
-	if probeFn != nil {
-		probes = newProbeManager(probeFn)
+	if opts.ProbeFn != nil {
+		probes = newProbeManager(opts.ProbeFn)
 	}
 
 	for {
-		p := buildPicker(title, items, cursor, detectFn != nil, probes)
-		p.allowAddPath = scanPathFn != nil
+		p := buildPicker(title, items, cursor, opts.DetectFn != nil, probes)
+		p.allowAddPath = opts.ScanPathFn != nil
 		p.notice = notice
 		out, err := tea.NewProgram(p, tea.WithAltScreen()).Run()
 		if err != nil {
@@ -71,13 +83,7 @@ func PickServices(title string, services []config.Service, detectFn func() ([]co
 			return nil, ErrCanceled
 
 		case resDone:
-			kept := make([]config.Service, 0, len(items))
-			for _, it := range items {
-				if it.keep {
-					kept = append(kept, it.svc)
-				}
-			}
-			return kept, nil
+			return collectServices(items), nil
 
 		case resEdit:
 			if fp.editIdx < 0 || fp.editIdx >= len(items) {
@@ -93,18 +99,18 @@ func PickServices(title string, services []config.Service, detectFn func() ([]co
 			if err := EditService(&ns, otherNames(items, -1)); err != nil {
 				return nil, err
 			}
-			items = append(items, pickItem{svc: ns, keep: true, edited: true})
+			items = append(items, pickItem{svc: ns, enabled: true, edited: true})
 			cursor = len(items) - 1
 
 		case resDetect:
-			fresh, derr := detectFn()
+			fresh, derr := opts.DetectFn()
 			if derr != nil {
 				return nil, derr
 			}
 			have := nameSet(items, -1)
 			for _, s := range fresh {
 				if !have[s.Name] {
-					items = append(items, pickItem{svc: s, keep: true})
+					items = append(items, pickItem{svc: s, enabled: true})
 					have[s.Name] = true
 				}
 			}
@@ -118,7 +124,7 @@ func PickServices(title string, services []config.Service, detectFn func() ([]co
 			if canceled || path == "" {
 				continue
 			}
-			found, serr := scanPathFn(path)
+			found, serr := opts.ScanPathFn(path)
 			if serr != nil {
 				notice = serr.Error()
 				continue
@@ -128,7 +134,7 @@ func PickServices(title string, services []config.Service, detectFn func() ([]co
 			for _, s := range found {
 				s.Name = uniqueName(s.Name, taken)
 				taken[s.Name] = true
-				items = append(items, pickItem{svc: s, keep: true})
+				items = append(items, pickItem{svc: s, enabled: true})
 				added++
 			}
 			if added == 0 {
@@ -139,6 +145,19 @@ func PickServices(title string, services []config.Service, detectFn func() ([]co
 			cursor = len(items) - 1
 		}
 	}
+}
+
+// collectServices turns the final picker rows into the services to write: every
+// row is kept (removal already dropped the ones the user discarded), and a
+// deselected row is recorded with Disabled set so its config survives.
+func collectServices(items []pickItem) []config.Service {
+	out := make([]config.Service, 0, len(items))
+	for _, it := range items {
+		s := it.svc
+		s.Disabled = !it.enabled
+		out = append(out, s)
+	}
+	return out
 }
 
 // probeState is the per-row runtime-discovery state.
@@ -153,9 +172,12 @@ const (
 )
 
 type pickItem struct {
-	svc   config.Service
-	keep  bool
-	state probeState
+	svc config.Service
+	// enabled is the select state the checkbox toggles. On save a deselected
+	// (disabled) service is written back with config.Service.Disabled set rather
+	// than dropped; the remove key deletes a service from the list outright.
+	enabled bool
+	state   probeState
 	// edited is set once the user has authored this service in the editor. Ports
 	// are the one field with two writers, the manual edit and the background
 	// probe, so a still-stored probe result would otherwise overwrite a hand-set
@@ -339,7 +361,16 @@ func (m picker) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case " ":
 		if m.cursor < len(m.items) {
-			m.items[m.cursor].keep = !m.items[m.cursor].keep
+			m.items[m.cursor].enabled = !m.items[m.cursor].enabled
+		}
+	case "x", "delete":
+		// remove drops a service from the config outright, distinct from deselect
+		// (which keeps it and only marks it disabled).
+		if m.cursor < len(m.items) {
+			m.items = append(m.items[:m.cursor], m.items[m.cursor+1:]...)
+			if m.cursor >= len(m.items) && m.cursor > 0 {
+				m.cursor--
+			}
 		}
 	case "right", "l":
 		if len(m.items) > 0 {
@@ -355,7 +386,7 @@ func (m picker) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// re-probing is an explicit opt-in to discovered ports: let the fresh
 			// result overwrite even services the user hand-edited before.
 			for i := range m.items {
-				if m.items[i].keep {
+				if m.items[i].enabled {
 					m.items[i].edited = false
 				}
 			}
@@ -426,7 +457,7 @@ func (m picker) reconcile() {
 func (m picker) selectedServices() []config.Service {
 	var out []config.Service
 	for _, it := range m.items {
-		if it.keep {
+		if it.enabled {
 			out = append(out, it.svc)
 		}
 	}
@@ -455,14 +486,14 @@ func (m picker) View() string {
 
 	titleStyle := lipgloss.NewStyle().Foreground(titleColor).Bold(true)
 	dim := lipgloss.NewStyle().Foreground(dimColor)
-	selected := 0
+	enabled := 0
 	for _, it := range m.items {
-		if it.keep {
-			selected++
+		if it.enabled {
+			enabled++
 		}
 	}
 	b.WriteString(titleStyle.Render(m.title))
-	b.WriteString(dim.Render(fmt.Sprintf("   selected %d/%d services", selected, len(m.items))))
+	b.WriteString(dim.Render(fmt.Sprintf("   enabled %d/%d services", enabled, len(m.items))))
 	b.WriteString("\n")
 	if m.notice != "" {
 		b.WriteString(lipgloss.NewStyle().Foreground(envColor).Render(m.notice) + "\n")
@@ -505,12 +536,12 @@ func (m picker) renderRow(i int, it pickItem, nameW, cmdW int) string {
 	}
 
 	box := dim.Render("○")
-	if it.keep {
+	if it.enabled {
 		box = lipgloss.NewStyle().Foreground(checkColor).Render("◉")
 	}
 
 	nameStyle := lipgloss.NewStyle().Bold(true)
-	if !it.keep {
+	if !it.enabled {
 		nameStyle = dim.Strikethrough(true)
 	}
 	name := nameStyle.Render(padRight(it.svc.Name, nameW))
@@ -519,12 +550,19 @@ func (m picker) renderRow(i int, it pickItem, nameW, cmdW int) string {
 
 	cmd := lipgloss.NewStyle().Foreground(faintColor).Render(padRight(truncate(rowCommand(it.svc), cmdW), cmdW))
 
-	return fmt.Sprintf("%s%s %s%s%s%s%s%s%s",
+	row := fmt.Sprintf("%s%s %s%s%s%s%s%s%s",
 		arrow, box,
 		name, strings.Repeat(" ", colGap),
 		rt, strings.Repeat(" ", colGap),
 		cmd, strings.Repeat(" ", colGap),
 		m.renderPorts(it))
+	// a deselected service is kept but disabled: tag it after the last column so
+	// the strikethrough doesn't read like a pending removal and the table columns
+	// stay aligned.
+	if !it.enabled {
+		row += dim.Render("  (disabled)")
+	}
+	return row
 }
 
 // renderPorts shows the spinner while a row is probing, the discovered ports
@@ -551,9 +589,11 @@ func (m picker) renderHints() string {
 	key := lipgloss.NewStyle().Foreground(theme.Bright).Bold(true)
 	dim := lipgloss.NewStyle().Foreground(dimColor)
 	sep := dim.Render("   ")
+	// deselect keeps a service but disables it; x removes it outright.
 	hints := []string{
 		key.Render("↑↓") + dim.Render(" move"),
-		key.Render("space") + dim.Render(" select"),
+		key.Render("space") + dim.Render(" enable/disable"),
+		key.Render("x") + dim.Render(" remove"),
 		key.Render("→") + dim.Render(" edit"),
 		key.Render("a") + dim.Render(" add"),
 	}

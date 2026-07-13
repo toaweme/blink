@@ -74,3 +74,58 @@ func Test_Paths_Resolve(t *testing.T) {
 		})
 	}
 }
+
+func Test_Paths_ConfigHome(t *testing.T) {
+	const home = "/home/user"
+
+	tests := []struct {
+		name       string
+		configHome string
+		env        string
+		want       string
+	}{
+		{
+			name: "default is .blink under home",
+			want: filepath.Join(home, ".blink"),
+		},
+		{
+			name:       "absolute config value honored as-is",
+			configHome: "/etc/blink",
+			want:       "/etc/blink",
+		},
+		{
+			// a relative override is user-scoped, so it resolves against $HOME
+			// (not the process cwd or the project dir_root), staying consistent
+			// with ConfigHome's default.
+			name:       "relative config value resolves against home",
+			configHome: "cfg/blink",
+			want:       filepath.Join(home, "cfg", "blink"),
+		},
+		{
+			name: "relative env override resolves against home",
+			env:  "envcfg",
+			want: filepath.Join(home, "envcfg"),
+		},
+		{
+			name: "absolute env override honored as-is",
+			env:  "/srv/blink",
+			want: "/srv/blink",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// pin $HOME so os.UserHomeDir is deterministic, and clear the config
+			// home override unless the case sets it.
+			t.Setenv("HOME", home)
+			t.Setenv("BLINK_CONFIG_HOME", tt.env)
+
+			p := Paths{ConfigHome: tt.configHome}
+			p.Resolve("/project")
+
+			if p.ConfigHome != tt.want {
+				t.Errorf("ConfigHome = %q, want %q", p.ConfigHome, tt.want)
+			}
+		})
+	}
+}

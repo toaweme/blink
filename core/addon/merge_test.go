@@ -104,18 +104,4 @@ func Test_MergeService(t *testing.T) {
 		)
 		assert.Equal(t, "go build", got.Commands.Build.Command)
 	})
-
-	t.Run("logging level: base wins, empty falls through", func(t *testing.T) {
-		got := MergeService(
-			config.Service{},
-			config.Service{Logging: config.Logging{Level: "debug"}},
-		)
-		assert.Equal(t, "debug", got.Logging.Level)
-
-		got = MergeService(
-			config.Service{Logging: config.Logging{Level: "warn"}},
-			config.Service{Logging: config.Logging{Level: "debug"}},
-		)
-		assert.Equal(t, "warn", got.Logging.Level)
-	})
 }

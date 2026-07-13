@@ -48,6 +48,20 @@ const (
 	StatusStopped Status = "stopped"
 )
 
+// ErrDependencyFailed is returned by waitForDeps when a dependency reaches a
+// terminal failure state before becoming ready. The dependent gives up instead
+// of waiting forever, so a crashed dependency surfaces as a clear diagnostic
+// rather than a silent hang.
+var ErrDependencyFailed = errors.New("dependency failed to start")
+
+// isTerminalFailure reports whether status is a terminal state a dependency can
+// never recover from on its own, so a dependent waiting on it must give up
+// rather than block forever. StatusStopped is deliberately excluded: it happens
+// during shutdown, where the context cancel already unblocks the wait.
+func isTerminalFailure(status Status) bool {
+	return status == StatusCrashed
+}
+
 // Supervisor orchestrates the configured services. Status transitions and
 // captured log lines flow out through a single Hub; consumers (TUI, plain UI,
 // headless log writer, remote mirror) subscribe for their own independent
@@ -250,7 +264,22 @@ func (s *Supervisor) Start(ctx context.Context) error {
 
 	for _, name := range s.order {
 		st := s.services[name]
+
+		// surface a misconfigured port on the service's own output. The reclaim
+		// scan silently drops an env-var port that does not resolve, so without
+		// this a typo'd name would just vanish.
+		for _, ref := range config.UnresolvedPortRefs(st.svc.Ports, st.svc.Env) {
+			s.notice(name, fmt.Sprintf("port %q could not be resolved and is skipped", ref))
+		}
+
 		if !st.svc.Reload.Reload && len(st.svc.Reload.ReloadOnDelete) == 0 {
+			// no reload configured, so this service gets no file watcher. only a
+			// long-running process is likely meant to restart on edits, so hint
+			// for that case and stay quiet for one-shots and managed runtimes
+			// (docker owns its own lifecycle).
+			if st.plan.Manager == nil && st.svc.Commands.Run != nil && st.svc.Commands.Run.Service {
+				s.notice(name, "no reload configured, this service will not restart on file changes (set reload.reload to enable)")
+			}
 			continue
 		}
 		w, err := watcher.New(s.cfg, st.svc, st.plan.ExtraWatches...)
@@ -321,7 +350,10 @@ func (s *Supervisor) run(st *serviceState) {
 	defer s.wg.Done()
 	defer close(st.done)
 
-	s.waitForDeps(st)
+	if err := s.waitForDeps(st); err != nil {
+		s.setStatusErr(st, StatusCrashed, err)
+		return
+	}
 	s.lifecycle(st, true)
 
 	for {
@@ -344,7 +376,10 @@ func (s *Supervisor) runManaged(st *serviceState) {
 	defer s.wg.Done()
 	defer close(st.done)
 
-	s.waitForDeps(st)
+	if err := s.waitForDeps(st); err != nil {
+		s.setStatusErr(st, StatusCrashed, err)
+		return
+	}
 
 	mgr := st.plan.Manager
 
@@ -616,7 +651,11 @@ func (s *Supervisor) cascadeRestart(st *serviceState) {
 	}
 }
 
-func (s *Supervisor) waitForDeps(st *serviceState) {
+// waitForDeps blocks until every dependency listed in reload_on_service has
+// become ready (running or cleanly exited). If a dependency instead reaches a
+// terminal failure state it returns an error so the dependent gives up rather
+// than waiting forever. A context cancel (shutdown) unblocks with a nil error.
+func (s *Supervisor) waitForDeps(st *serviceState) error {
 	for _, dep := range st.svc.Reload.ReloadOnService {
 		if _, ok := s.services[dep]; !ok {
 			continue
@@ -626,13 +665,18 @@ func (s *Supervisor) waitForDeps(st *serviceState) {
 			if status == StatusRunning || status == StatusExited {
 				break
 			}
+			if isTerminalFailure(status) {
+				log.Error("dependency failed to start, dependent will not start", "service", st.svc.Name, "dependency", dep, "status", status)
+				return fmt.Errorf("service %q cannot start: dependency %q crashed: %w", st.svc.Name, dep, ErrDependencyFailed)
+			}
 			select {
 			case <-s.ctx.Done():
-				return
+				return nil
 			case <-time.After(50 * time.Millisecond):
 			}
 		}
 	}
+	return nil
 }
 
 func (s *Supervisor) forwardWatcher(name string, w *watcher.Watcher) {
@@ -689,6 +733,15 @@ func (s *Supervisor) publishLog(service, child, line string) {
 		Line:    line,
 		At:      time.Now(),
 	})
+}
+
+// notice publishes a blink-authored line onto a service's output stream so a
+// diagnostic reaches the user in every UI. The full TUI silences blink's own
+// logger while it owns the screen, so a plain log.Warn would be invisible there,
+// but a Hub line lands on the service's tab. The line is prefixed with blink so
+// it reads as ours, not the process's own output.
+func (s *Supervisor) notice(service, msg string) {
+	s.publishLog(service, "", "blink: "+msg)
 }
 
 // tee returns an io.Writer that publishes each line written to it as a

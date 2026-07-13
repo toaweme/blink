@@ -2,6 +2,7 @@
 package docker
 
 import (
+	"os"
 	"path/filepath"
 	"strconv"
 
@@ -17,6 +18,25 @@ var _ addon.Runtime = Runtime{}
 // Name returns the runtime identifier.
 func (Runtime) Name() string { return "docker" }
 
+// composeCandidates are the conventional compose filenames in preference order,
+// mirroring the detector's list so a hand-written `runtime: docker` with no
+// `file` resolves the same compose file `blink init` would have picked. The
+// detector's copy lives in the unexported detect package, so the list is
+// duplicated here to avoid an import cycle.
+var composeCandidates = []string{"compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"}
+
+// resolveComposeFile probes workDir for the conventional compose filenames in
+// preference order and returns the first that exists, falling back to
+// DefaultComposeFile when none are present.
+func resolveComposeFile(workDir string) string {
+	for _, name := range composeCandidates {
+		if _, err := os.Stat(filepath.Join(workDir, name)); err == nil {
+			return name
+		}
+	}
+	return config.DefaultComposeFile
+}
+
 // Prepare builds the addon plan that drives the compose stack for the service.
 func (r Runtime) Prepare(cfg config.Config, svc config.Service) (addon.Plan, error) {
 	dc := svc.Docker
@@ -28,7 +48,7 @@ func (r Runtime) Prepare(cfg config.Config, svc config.Service) (addon.Plan, err
 
 	composeFile := dc.File
 	if composeFile == "" {
-		composeFile = config.DefaultComposeFile
+		composeFile = resolveComposeFile(workDir)
 	}
 	if !filepath.IsAbs(composeFile) {
 		composeFile = filepath.Join(workDir, composeFile)

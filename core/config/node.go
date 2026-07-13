@@ -34,6 +34,26 @@ func NodePackageManager(dir string) string {
 	return "npm"
 }
 
+// nodePackageManagers is the set of package managers blink knows how to drive,
+// used to validate NodeConfig.PackageManager at load time. The empty string is
+// handled separately (it means auto-detect from the lockfile).
+var nodePackageManagers = map[string]struct{}{
+	"npm":  {},
+	"pnpm": {},
+	"yarn": {},
+	"bun":  {},
+}
+
+// ValidPackageManager reports whether pm is a package manager blink recognizes.
+// The empty string is valid and means auto-detect from the lockfile.
+func ValidPackageManager(pm string) bool {
+	if pm == "" {
+		return true
+	}
+	_, ok := nodePackageManagers[pm]
+	return ok
+}
+
 // nodeSelfReloadTokens are markers in a dev-script command that identify a tool
 // running its own live reload / HMR (dev servers and process watchers alike).
 // When a service's dev command carries one, blink must not restart the process
