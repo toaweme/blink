@@ -1,12 +1,9 @@
 package config
 
 import (
-	"bytes"
 	"encoding/json"
-	"strings"
 	"testing"
 
-	"github.com/toaweme/log"
 	"gopkg.in/yaml.v3"
 )
 
@@ -114,55 +111,51 @@ func Test_ResolvePorts_DropsUnresolvable(t *testing.T) {
 	}
 }
 
-// Test_ResolvePorts_SurfacesDropped asserts that every dropped entry is logged
-// at warn level naming the offending reference or literal, so a typo'd env-var
-// name is never silently swallowed.
-func Test_ResolvePorts_SurfacesDropped(t *testing.T) {
+// Test_UnresolvedPortRefs asserts every dropped entry is named (an env-var name
+// for an unresolved reference, the decimal for an out-of-range literal) so the
+// supervisor can surface a typo instead of the port silently disappearing.
+func Test_UnresolvedPortRefs(t *testing.T) {
 	tests := []struct {
 		name  string
 		ports []Port
 		env   map[string]string
-		// want is a substring the captured log output must contain, or "" when
-		// nothing should be logged.
-		want string
+		want  []string
 	}{
 		{
 			name:  "unresolved reference is named",
 			ports: []Port{EnvPort("MISSING_PORT")},
 			env:   map[string]string{},
-			want:  "MISSING_PORT",
+			want:  []string{"MISSING_PORT"},
 		},
 		{
 			name:  "out-of-range literal is named",
 			ports: []Port{LiteralPort(99999)},
 			env:   map[string]string{},
-			want:  "99999",
+			want:  []string{"99999"},
 		},
 		{
-			name:  "resolvable entries log nothing",
+			name:  "resolvable entries yield nothing",
 			ports: []Port{LiteralPort(8080), EnvPort("PORT")},
 			env:   map[string]string{"PORT": "9090"},
-			want:  "",
+			want:  nil,
+		},
+		{
+			name:  "mixed keeps only the bad ones in order",
+			ports: []Port{EnvPort("PORT"), EnvPort("NOPE"), LiteralPort(70000)},
+			env:   map[string]string{"PORT": "9090"},
+			want:  []string{"NOPE", "70000"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var buf bytes.Buffer
-			restore := log.Default()
-			log.SetDefault(log.New(log.WithText(&buf)))
-			defer log.SetDefault(restore)
-
-			ResolvePorts(tt.ports, tt.env)
-
-			out := buf.String()
-			if tt.want == "" {
-				if out != "" {
-					t.Fatalf("ResolvePorts logged %q, want no output", out)
-				}
-				return
+			got := UnresolvedPortRefs(tt.ports, tt.env)
+			if len(got) != len(tt.want) {
+				t.Fatalf("UnresolvedPortRefs = %v, want %v", got, tt.want)
 			}
-			if !strings.Contains(out, tt.want) {
-				t.Fatalf("ResolvePorts log = %q, want substring %q", out, tt.want)
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("UnresolvedPortRefs = %v, want %v", got, tt.want)
+				}
 			}
 		})
 	}

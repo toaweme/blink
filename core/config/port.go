@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/toaweme/log"
 	"gopkg.in/yaml.v3"
 )
 
@@ -57,24 +56,33 @@ func (p Port) String() string {
 }
 
 // ResolvePorts resolves every entry against env, dropping any that cannot be
-// resolved to a valid port. A dropped entry is logged at warn level naming the
-// offending reference or literal, so a typo'd env-var name never disappears
-// silently and leaves callers (like portkill) scanning nothing.
+// resolved to a valid port. Dropped entries are not lost to the user, since the
+// supervisor calls UnresolvedPortRefs to surface them on the service's output
+// so a typo'd env-var name is visible rather than quietly scanning nothing.
 func ResolvePorts(ports []Port, env map[string]string) []int {
 	out := make([]int, 0, len(ports))
 	for _, p := range ports {
 		n, ok := p.Resolve(env)
 		if !ok {
-			if p.EnvKey != "" {
-				log.Warn("dropping unresolved port reference", "env", p.EnvKey)
-			} else {
-				log.Warn("dropping out-of-range port literal", "port", p.Value)
-			}
 			continue
 		}
 		out = append(out, n)
 	}
 	return out
+}
+
+// UnresolvedPortRefs returns a label for every entry ResolvePorts would drop,
+// the bare env-var name for an unresolved reference or the decimal for an
+// out-of-range literal. A caller with a UI (the supervisor) surfaces these so a
+// misconfigured port does not silently disappear from the reclaim scan.
+func UnresolvedPortRefs(ports []Port, env map[string]string) []string {
+	var bad []string
+	for _, p := range ports {
+		if _, ok := p.Resolve(env); !ok {
+			bad = append(bad, p.String())
+		}
+	}
+	return bad
 }
 
 // ParsePort reads one textual port entry: a value that parses as an integer is

@@ -264,11 +264,22 @@ func (s *Supervisor) Start(ctx context.Context) error {
 
 	for _, name := range s.order {
 		st := s.services[name]
+
+		// surface a misconfigured port on the service's own output. The reclaim
+		// scan silently drops an env-var port that does not resolve, so without
+		// this a typo'd name would just vanish.
+		for _, ref := range config.UnresolvedPortRefs(st.svc.Ports, st.svc.Env) {
+			s.notice(name, fmt.Sprintf("port %q could not be resolved and is skipped", ref))
+		}
+
 		if !st.svc.Reload.Reload && len(st.svc.Reload.ReloadOnDelete) == 0 {
-			// no reload configured, so this service gets no file watcher. skip
-			// watcher.New (which would only error for this case) and give the user
-			// a friendly hint at info level rather than staying silent.
-			log.Info("no reload configured, service will not restart on file changes (add reload.reload to enable)", "service", name)
+			// no reload configured, so this service gets no file watcher. only a
+			// long-running process is likely meant to restart on edits, so hint
+			// for that case and stay quiet for one-shots and managed runtimes
+			// (docker owns its own lifecycle).
+			if st.plan.Manager == nil && st.svc.Commands.Run != nil && st.svc.Commands.Run.Service {
+				s.notice(name, "no reload configured, this service will not restart on file changes (set reload.reload to enable)")
+			}
 			continue
 		}
 		w, err := watcher.New(s.cfg, st.svc, st.plan.ExtraWatches...)
@@ -722,6 +733,15 @@ func (s *Supervisor) publishLog(service, child, line string) {
 		Line:    line,
 		At:      time.Now(),
 	})
+}
+
+// notice publishes a blink-authored line onto a service's output stream so a
+// diagnostic reaches the user in every UI. The full TUI silences blink's own
+// logger while it owns the screen, so a plain log.Warn would be invisible there,
+// but a Hub line lands on the service's tab. The line is prefixed with blink so
+// it reads as ours, not the process's own output.
+func (s *Supervisor) notice(service, msg string) {
+	s.publishLog(service, "", "blink: "+msg)
 }
 
 // tee returns an io.Writer that publishes each line written to it as a
