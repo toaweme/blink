@@ -33,6 +33,10 @@ type RunCommand struct {
 
 var _ cli.Command[RunConfig] = (*RunCommand)(nil)
 
+// ErrInvalidFlag marks an override flag or env var whose value is not one of the
+// accepted on/off spellings. Callers can match it with errors.Is.
+var ErrInvalidFlag = errors.New("invalid override value")
+
 // NewRunCommand builds the run command using reg to supervise services.
 func NewRunCommand(reg *addon.Registry) *RunCommand {
 	return &RunCommand{BaseCommand: cli.NewBaseCommand[RunConfig](), reg: reg}
@@ -75,23 +79,27 @@ func loadRunConfig(cwd string, in RunConfig) (config.Config, error) {
 	if in.UI != "" {
 		cfg.UI = in.UI
 	}
-	switch in.ForceShutdown {
-	case "on", "true", "yes":
-		t := true
-		cfg.ForceShutdown = &t
-	case "off", "false", "no":
-		f := false
-		cfg.ForceShutdown = &f
+	fs, err := parseToggle("force_shutdown", in.ForceShutdown)
+	if err != nil {
+		return config.Config{}, err
 	}
-	switch in.Logs {
-	case "on", "true", "yes":
-		t := true
-		cfg.Logs.Write = &t
-	case "off", "false", "no":
-		f := false
-		cfg.Logs.Write = &f
+	if fs != nil {
+		cfg.ForceShutdown = fs
 	}
-	cfg.Zen = in.Zen
+	lw, err := parseToggle("logs", in.Logs)
+	if err != nil {
+		return config.Config{}, err
+	}
+	if lw != nil {
+		cfg.Logs.Write = lw
+	}
+
+	// only override zen when the flag/env is actually set. in.Zen defaults false
+	// and the cli lib cannot tell a false flag from an unset one, so a bare false
+	// must not clobber a config zen: true. -z / BLINK_ZEN=true still force it on.
+	if in.Zen {
+		cfg.Zen = true
+	}
 
 	// disabled services stay in the config but never run: drop them before
 	// scoping so they don't appear in the supervised set or the TUI, and so a
@@ -123,6 +131,26 @@ func loadRunConfig(cwd string, in RunConfig) (config.Config, error) {
 func runUI(cfg config.Config, reg *addon.Registry) error {
 	app := ui.NewApp(ui.DefaultRegistry(reg))
 	return app.Run(cfg)
+}
+
+// parseToggle interprets an on/off override string coming from a flag or env
+// var. An empty value means the override was not provided, so it returns a nil
+// pointer and the config default stands. Any value other than the accepted
+// on/off spellings is rejected so a typo like BLINK_LOGS=1 or -k enabled fails
+// loudly instead of being silently ignored.
+func parseToggle(name, v string) (*bool, error) {
+	switch v {
+	case "":
+		return nil, nil
+	case "on", "true", "yes":
+		t := true
+		return &t, nil
+	case "off", "false", "no":
+		f := false
+		return &f, nil
+	default:
+		return nil, fmt.Errorf("invalid %s override %q (want on/off): %w", name, v, ErrInvalidFlag)
+	}
 }
 
 // enabledServices returns only the services that are not marked Disabled, so a
