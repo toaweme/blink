@@ -79,19 +79,20 @@ func loadRunConfig(cwd string, in RunConfig) (config.Config, error) {
 	if in.UI != "" {
 		cfg.UI = in.UI
 	}
-	fs, err := parseToggle("force_shutdown", in.ForceShutdown)
-	if err != nil {
-		return config.Config{}, err
+	// an empty override means the flag was not set, so the config default stands.
+	if in.ForceShutdown != "" {
+		fs, err := parseToggle("force_shutdown", in.ForceShutdown)
+		if err != nil {
+			return config.Config{}, err
+		}
+		cfg.ForceShutdown = &fs
 	}
-	if fs != nil {
-		cfg.ForceShutdown = fs
-	}
-	lw, err := parseToggle("logs", in.Logs)
-	if err != nil {
-		return config.Config{}, err
-	}
-	if lw != nil {
-		cfg.Logs.Write = lw
+	if in.Logs != "" {
+		lw, err := parseToggle("logs", in.Logs)
+		if err != nil {
+			return config.Config{}, err
+		}
+		cfg.Logs.Write = &lw
 	}
 
 	// only override zen when the flag/env is actually set. in.Zen defaults false
@@ -133,23 +134,19 @@ func runUI(cfg config.Config, reg *addon.Registry) error {
 	return app.Run(cfg)
 }
 
-// parseToggle interprets an on/off override string coming from a flag or env
-// var. An empty value means the override was not provided, so it returns a nil
-// pointer and the config default stands. Any value other than the accepted
-// on/off spellings is rejected so a typo like BLINK_LOGS=1 or -k enabled fails
-// loudly instead of being silently ignored.
-func parseToggle(name, v string) (*bool, error) {
+// parseToggle interprets an on/off override string coming from a flag. The
+// caller only invokes it for a non-empty value (an empty override leaves the
+// config default in place), so every input either maps to a bool or is
+// rejected. Any value other than the accepted on/off spellings fails loudly so
+// a typo like -k enabled is not silently ignored.
+func parseToggle(name, v string) (bool, error) {
 	switch v {
-	case "":
-		return nil, nil
 	case "on", "true", "yes":
-		t := true
-		return &t, nil
+		return true, nil
 	case "off", "false", "no":
-		f := false
-		return &f, nil
+		return false, nil
 	default:
-		return nil, fmt.Errorf("invalid %s override %q (want on/off): %w", name, v, ErrInvalidFlag)
+		return false, fmt.Errorf("invalid %s override %q (want on/off): %w", name, v, ErrInvalidFlag)
 	}
 }
 
