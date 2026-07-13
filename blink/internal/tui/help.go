@@ -89,14 +89,16 @@ func (m *Model) renderHelpKeyboard() string {
 		lines = append(lines, pair(strings.Join(keys, " / "), e.Help))
 	}
 
-	// fixed keys not part of the rebindable keymap.
+	// fixed keys not part of the rebindable keymap. up/down are rebindable
+	// (cursor-up/cursor-down) and render in the bindings section above, so they
+	// are deliberately absent here.
 	lines = append(lines,
 		"",
 		title.Render("navigation (fixed)"),
 		pair("1-9", "jump to tab"),
-		pair("↑ / ↓", "scroll"),
 		pair("pgup / pgdn", "page up / down"),
 		pair("home / end", "scroll to top / bottom"),
+		pair("mouse / touchpad", "scroll"),
 	)
 	return strings.Join(lines, "\n")
 }

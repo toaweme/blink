@@ -18,7 +18,8 @@ const (
 
 	// ActionQuit quits the consumer.
 	ActionQuit Action = "quit"
-	// ActionCommandCenter opens the action center.
+	// ActionCommandCenter opens the help / key-bindings modal. The id stays
+	// "command-center" for config compatibility with blink.yaml control.keys.
 	ActionCommandCenter Action = "command-center"
 	// ActionToggleZen toggles zen mode.
 	ActionToggleZen Action = "toggle-zen"
@@ -43,7 +44,7 @@ const (
 	ActionClear Action = "clear"
 	// ActionClearAll clears every buffer.
 	ActionClearAll Action = "clear-all"
-	// ActionCursorMode toggles line cursor mode. While off, cursor-up/down
+	// ActionCursorMode toggles cursor mode. While off, cursor-up/down
 	// scroll the viewport; while on they move the cursor and selection keys are
 	// live.
 	ActionCursorMode Action = "cursor-mode"
@@ -90,7 +91,7 @@ func Actions() []Spec {
 		{ActionHistForward, "forward in tab history"},
 		{ActionClear, "clear the focused tab buffer"},
 		{ActionClearAll, "clear all buffers"},
-		{ActionCursorMode, "toggle line-export mode"},
+		{ActionCursorMode, "toggle cursor mode"},
 		{ActionCursorUp, "scroll up (cursor up in cursor mode)"},
 		{ActionCursorDown, "scroll down (cursor down in cursor mode)"},
 		{ActionExtendUp, "extend selection up"},
@@ -101,7 +102,7 @@ func Actions() []Spec {
 		{ActionWriteSelection, "rewrite <svc>.selected.log with the selection"},
 		{ActionAppendSelection, "append the selection to <svc>.selected.log"},
 		{ActionToggleLogs, "toggle log-file writing"},
-		{ActionCommandCenter, "open the action center"},
+		{ActionCommandCenter, "open the help / key-bindings modal"},
 		{ActionToggleZen, "toggle zen mode"},
 		{ActionQuit, "quit"},
 	}
