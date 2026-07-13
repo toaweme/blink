@@ -53,6 +53,75 @@ func waitStatus(t *testing.T, s *Supervisor, name string, want Status, timeout t
 	}
 }
 
+// Test_WaitForDeps_TerminalFailure covers the classifier that decides which
+// dependency states make a dependent give up instead of waiting forever.
+func Test_WaitForDeps_TerminalFailure(t *testing.T) {
+	tests := []struct {
+		name   string
+		status Status
+		want   bool
+	}{
+		{"crashed is terminal", StatusCrashed, true},
+		{"running is not terminal", StatusRunning, false},
+		{"exited is not terminal", StatusExited, false},
+		{"pending is not terminal", StatusPending, false},
+		{"stopped is not terminal", StatusStopped, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isTerminalFailure(tc.status); got != tc.want {
+				t.Fatalf("isTerminalFailure(%q) = %v, want %v", tc.status, got, tc.want)
+			}
+		})
+	}
+}
+
+// Test_WaitForDeps_CrashedDependency verifies a service whose dependency crashes
+// on boot gives up with a clear diagnostic instead of waiting on the dependency
+// forever. Without the terminal-failure check the dependent would hang at
+// pending; with it, the dependent surfaces as crashed.
+func Test_WaitForDeps_CrashedDependency(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.Config{
+		DirRoot: dir,
+		Services: []config.Service{
+			{
+				// a failing build lands dep in crashed via pending -> building ->
+				// crashed, so it never transiently passes through running (which a
+				// failing run command would, briefly unblocking the dependent).
+				Name: "dep",
+				Commands: config.Commands{
+					Build: &config.Command{Command: "exit 1"},
+					Run:   &config.Command{Command: "true"},
+				},
+			},
+			{
+				Name:     "app",
+				Reload:   config.Reload{ReloadOnService: []string{"dep"}},
+				Commands: config.Commands{Run: &config.Command{Command: "true"}},
+			},
+		},
+	}
+	reg := addon.NewRegistry()
+	reg.AddRuntime(stubRuntime{})
+	s, err := New(cfg, reg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = s.Stop(context.Background()) }()
+
+	if got := waitStatus(t, s, "dep", StatusCrashed, 2*time.Second); got != StatusCrashed {
+		t.Fatalf("dep status = %q, want %q", got, StatusCrashed)
+	}
+	// the dependent must give up rather than block forever on a crashed dep.
+	if got := waitStatus(t, s, "app", StatusCrashed, 2*time.Second); got != StatusCrashed {
+		t.Fatalf("app status = %q, want %q (dependent should not hang on a crashed dependency)", got, StatusCrashed)
+	}
+}
+
 // Test_Restart_OneOff verifies that pressing restart on a one-off service that
 // already finished re-runs its command every time. Each run appends a byte to a
 // counter file, so N restarts must yield N+1 bytes.
