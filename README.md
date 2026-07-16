@@ -144,7 +144,7 @@ State (logs, build output) lives under a per-project `.blink/` dir; user-scoped 
 
 ## TUI
 
-The default `blink` UI gives one tab per service plus an `all` tab, color-coded by status (gray pending, red error, green running), with a footer showing watch stats, uptime, and each service's `http://127.0.0.1:<port>` address. Keys are data-driven and rebindable via `control.keys` in the config:
+The default `blink` UI gives one tab per service plus an `all` tab, color-coded by status (gray pending, red error, green running), with a footer showing watch stats, uptime, and each service's `http://localhost:<port>` address. Keys are data-driven and rebindable via `control.keys` in the config:
 
 - Per-service tabs and a merged `all` view; `[`/`]` walk tab history.
 - Scroll vs cursor mode (`e`); multi-line selection (`space`, `shift+↑/↓`) with copy (`c`), rewrite (`w`), and append (`a`) to `<LogDir>/<svc>.selected.log`, all to the clipboard too.

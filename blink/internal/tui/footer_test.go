@@ -10,8 +10,8 @@ func Test_FormatPortsURL(t *testing.T) {
 	}{
 		{"none", nil, ""},
 		{"empty", []int{}, ""},
-		{"single", []int{8080}, "http://127.0.0.1:8080"},
-		{"multiple", []int{8080, 8081, 9090}, "http://127.0.0.1:8080, 8081, 9090"},
+		{"single", []int{8080}, "http://localhost:8080"},
+		{"multiple", []int{8080, 8081, 9090}, "http://localhost:8080, 8081, 9090"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
