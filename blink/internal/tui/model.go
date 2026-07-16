@@ -105,7 +105,7 @@ type Model struct {
 	// ports[svc] is the set of local TCP ports a service listens on. Seeded from
 	// the probed/configured ports and, for runtime-managed services (docker),
 	// updated from the published ports a StatusMsg carries once the stack is up.
-	// Rendered as a "http://127.0.0.1:<port>, ..." address left of the uptime.
+	// Rendered as a "http://localhost:<port>, ..." address left of the uptime.
 	ports map[string][]int
 
 	// watchFiles, watchDirs and watchPerSvc are the latest counts published by
@@ -1241,9 +1241,12 @@ func (m *Model) renderWatchStat(dim, val lipgloss.Style) string {
 		val.Render(strconv.Itoa(dirs)) + dim.Render("d")
 }
 
-// formatPortsURL renders a service's listening ports as a loopback address:
-// "http://127.0.0.1:8080" for one, "http://127.0.0.1:8080, 8081" for several.
+// formatPortsURL renders a service's listening ports as a loopback address,
+// "http://localhost:8080" for one, "http://localhost:8080, 8081" for several.
 // Empty for a service with no known port.
+//
+// We need to use "localhost" in cases where the dev server (Vite's default) listens on ::1 alone, otherwise htto://127.0.0.1 hits
+// nothing.
 func formatPortsURL(ports []int) string {
 	if len(ports) == 0 {
 		return ""
@@ -1252,7 +1255,7 @@ func formatPortsURL(ports []int) string {
 	for i, p := range ports {
 		nums[i] = strconv.Itoa(p)
 	}
-	return "http://127.0.0.1:" + strings.Join(nums, ", ")
+	return "http://localhost:" + strings.Join(nums, ", ")
 }
 
 // formatUptime renders a duration compactly (12s, 2m13s, 1h04m, 3d02h), trimmed
