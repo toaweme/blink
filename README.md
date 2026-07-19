@@ -19,6 +19,8 @@ Point it at a repo (or a few), run `blink`, and your shell scripts, Go binaries,
 
 It detects what your project runs, so the common case needs zero config, and it stays fully offline.
 
+**[Documentation](https://toawe.me/docs/blink)** | [toawe.me](https://toawe.me)
+
 <p align="center">
     <img src=".github/demo.gif" alt="blink demo discovering and running services" width="900">
 </p>
