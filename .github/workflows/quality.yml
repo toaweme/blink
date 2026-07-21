@@ -26,7 +26,7 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - uses: toaweme/care@8c5839056d7aeea9ffb5fb513bed9f9b9797e0d8 # v0.9.3
+      - uses: toaweme/care@e684a2e9486d28281fe12d9fdd1284aa946c2825 # v0.9.4
         with:
           strict: true                                  # fail CI on a failing check
           publish-url: https://code.toawe.me/ingest?kind=care
