@@ -5,6 +5,21 @@ All notable changes to this project are documented here, newest first.
 Entries are generated from [Conventional Commits](https://www.conventionalcommits.org)
 and grouped by change type. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-07-25
+
+### Fixes
+
+- Blink edit no longer adds local paths by [@iberflow](https://github.com/iberflow) in [#10](https://github.com/toaweme/blink/pull/10).
+
+### Documentation
+
+- Link to docs site from README by [@iberflow](https://github.com/iberflow) in [640cf68](https://github.com/toaweme/blink/commit/640cf684d91dc757cac4b60ca39aa474e4569cdc).
+
+### Chores & Other
+
+- **Deps:** Bump toaweme/care from 0.9.3 to 0.9.4 in the actions group by [@dependabot[bot]](https://github.com/dependabot[bot]) in [#8](https://github.com/toaweme/blink/pull/8).
+- **Deps:** Bump actions/setup-go in the actions-major group by [@dependabot[bot]](https://github.com/dependabot[bot]) in [#9](https://github.com/toaweme/blink/pull/9).
+
 ## [0.5.1] - 2026-07-16
 
 ### Fixes
@@ -181,6 +196,7 @@ and grouped by change type. This project adheres to [Semantic Versioning](https:
 - Bump deps by [@iberflow](https://github.com/iberflow) in [8678e08](https://github.com/toaweme/blink/commit/8678e08f4f4027ca1d983fa388704052e276a35e).
 - Freeze go 1.26.4 by [@iberflow](https://github.com/iberflow) in [c846eee](https://github.com/toaweme/blink/commit/c846eeefe2e0ed9afc11748e172443acdfacc85e).
 
+[0.5.2]: https://github.com/toaweme/blink/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/toaweme/blink/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/toaweme/blink/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/toaweme/blink/compare/v0.3.0...v0.4.0
