@@ -36,7 +36,10 @@ func NewEditCommand(reg *addon.Registry) *EditCommand {
 
 // Run loads the existing config, runs the picker, and writes the edited config back to its path.
 func (c *EditCommand) Run(options cli.GlobalFlags, _ cli.Unknowns) error {
-	cfg, path, err := loader.Load(options.Cwd, c.Inputs.Config)
+	// load the file as authored: edit rewrites it in place, and the resolved
+	// DirRoot and Paths the runtime loader derives are machine-local absolutes
+	// that must not be written back into the project's config.
+	cfg, path, err := loader.LoadRaw(options.Cwd, c.Inputs.Config)
 	if err != nil {
 		return fmt.Errorf("failed to load config (run `blink init` first?): %w", err)
 	}
