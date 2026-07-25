@@ -160,6 +160,57 @@ func Test_Load_DecodesByExtension(t *testing.T) {
 	}
 }
 
+// Test_LoadRaw_KeepsFileAsAuthored guards the config round-trip used by
+// `blink edit`: nothing the runtime loader derives (an absolute DirRoot, the
+// resolved control/log/build dirs) may appear in a config read for rewriting,
+// while values the file does set are handed back untouched.
+func Test_LoadRaw_KeepsFileAsAuthored(t *testing.T) {
+	tests := []struct {
+		name        string
+		data        string
+		wantDirRoot string
+		wantPaths   config.Paths
+	}{
+		{
+			name: "omitted fields stay empty",
+			data: "services:\n  - name: api\n",
+		},
+		{
+			name:        "authored values are preserved",
+			data:        "dir_root: ../app\npaths:\n    log_dir: tmp/logs\nservices:\n  - name: api\n",
+			wantDirRoot: "../app",
+			wantPaths:   config.Paths{LogDir: "tmp/logs"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "blink.yml")
+			if err := os.WriteFile(path, []byte(tc.data), 0o644); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+
+			cfg, abs, err := LoadRaw(dir, "")
+			if err != nil {
+				t.Fatalf("LoadRaw: %v", err)
+			}
+			if abs != path {
+				t.Fatalf("path = %q, want %q", abs, path)
+			}
+			if cfg.DirRoot != tc.wantDirRoot {
+				t.Fatalf("DirRoot = %q, want %q", cfg.DirRoot, tc.wantDirRoot)
+			}
+			if cfg.Paths != tc.wantPaths {
+				t.Fatalf("Paths = %+v, want %+v", cfg.Paths, tc.wantPaths)
+			}
+			if cfg.ConfigPath != "" {
+				t.Fatalf("ConfigPath = %q, want empty", cfg.ConfigPath)
+			}
+		})
+	}
+}
+
 func Test_Load_ResolvesDirRootRelativeToConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "blink.yaml")

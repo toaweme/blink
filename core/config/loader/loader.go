@@ -25,6 +25,29 @@ var configNames = []string{"blink.yml", "blink.yaml", "blink.toml", "blink.json"
 // walks up from start looking for one of configNames. If DirRoot is unset in
 // the loaded file, it defaults to the directory containing the config.
 func Load(start, explicit string) (config.Config, string, error) {
+	cfg, abs, err := LoadRaw(start, explicit)
+	if err != nil {
+		return config.Config{}, abs, err
+	}
+
+	if cfg.DirRoot == "" {
+		cfg.DirRoot = filepath.Dir(abs)
+	} else if !filepath.IsAbs(cfg.DirRoot) {
+		cfg.DirRoot = filepath.Join(filepath.Dir(abs), cfg.DirRoot)
+	}
+
+	cfg.ConfigPath = abs
+	cfg.Paths.Resolve(cfg.DirRoot)
+
+	return cfg, abs, nil
+}
+
+// LoadRaw returns the config exactly as it is written on disk, along with the
+// absolute path it was read from. Nothing is derived: DirRoot stays as authored
+// (empty when the file omits it) and Paths keeps only the fields the file sets.
+// Commands that write the config back load it this way, so round-tripping a
+// config never bakes blink's resolved defaults into the file.
+func LoadRaw(start, explicit string) (config.Config, string, error) {
 	path := explicit
 	if path == "" {
 		found, err := Discover(start)
@@ -53,15 +76,6 @@ func Load(start, explicit string) (config.Config, string, error) {
 	if err := codec.Unmarshal(data, &cfg); err != nil {
 		return config.Config{}, "", fmt.Errorf("failed to parse %s: %w", abs, err)
 	}
-
-	if cfg.DirRoot == "" {
-		cfg.DirRoot = filepath.Dir(abs)
-	} else if !filepath.IsAbs(cfg.DirRoot) {
-		cfg.DirRoot = filepath.Join(filepath.Dir(abs), cfg.DirRoot)
-	}
-
-	cfg.ConfigPath = abs
-	cfg.Paths.Resolve(cfg.DirRoot)
 
 	if err := Validate(cfg); err != nil {
 		return config.Config{}, abs, fmt.Errorf("invalid config %s: %w", abs, err)
