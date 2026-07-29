@@ -5,6 +5,16 @@ All notable changes to this project are documented here, newest first.
 Entries are generated from [Conventional Commits](https://www.conventionalcommits.org)
 and grouped by change type. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-07-29
+
+### Features
+
+- Open services in file explorer, browser and IDE by [@iberflow](https://github.com/iberflow) in [#12](https://github.com/toaweme/blink/pull/12).
+
+### Chores & Other
+
+- **Deps:** Bump actions/checkout in the actions group by [@dependabot[bot]](https://github.com/dependabot[bot]) in [#11](https://github.com/toaweme/blink/pull/11).
+
 ## [0.5.2] - 2026-07-25
 
 ### Fixes
@@ -133,6 +143,25 @@ and grouped by change type. This project adheres to [Semantic Versioning](https:
 
 - Coalesce log bursts into one render to stop backlog scroll animation by [@iberflow](https://github.com/iberflow) in [a982245](https://github.com/toaweme/blink/commit/a98224536fabc277e303108caf5725e31fb709f4).
 
+## [0.1.3] - 2026-07-03
+
+### Features
+
+- Publish windows builds via scoop by Ignas Bernotas in [da95eef](https://github.com/toaweme/blink/commit/da95eef2633caab4fac42c05598eb1d173f9fb8c).
+
+### Documentation
+
+- Update README by Ignas Bernotas in [0153e7b](https://github.com/toaweme/blink/commit/0153e7b89c9cc5115792f1f9986a5632f1795606).
+- Update README by Ignas Bernotas in [34b09bf](https://github.com/toaweme/blink/commit/34b09bfbf3a4f890c35240bfcfdecd1290b604c9).
+
+### Refactors
+
+- Switch homebrew distribution from formula to cask by Ignas Bernotas in [52fa41f](https://github.com/toaweme/blink/commit/52fa41f0adf969263e48c1be1b27eed380b45f8e).
+
+### Chores & Other
+
+- Relicense from MIT to Apache 2.0 by Ignas Bernotas in [faedf7f](https://github.com/toaweme/blink/commit/faedf7fdadb4d5b8f0110d69c2d8cb7a9ff11747).
+
 ## [0.1.2] - 2026-07-01
 
 ### Documentation
@@ -196,6 +225,7 @@ and grouped by change type. This project adheres to [Semantic Versioning](https:
 - Bump deps by [@iberflow](https://github.com/iberflow) in [8678e08](https://github.com/toaweme/blink/commit/8678e08f4f4027ca1d983fa388704052e276a35e).
 - Freeze go 1.26.4 by [@iberflow](https://github.com/iberflow) in [c846eee](https://github.com/toaweme/blink/commit/c846eeefe2e0ed9afc11748e172443acdfacc85e).
 
+[0.6.0]: https://github.com/toaweme/blink/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/toaweme/blink/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/toaweme/blink/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/toaweme/blink/compare/v0.4.0...v0.5.0
