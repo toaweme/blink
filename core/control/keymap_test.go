@@ -9,6 +9,9 @@ func Test_DefaultKeymap_Lookup(t *testing.T) {
 		want Action
 	}{
 		{"r", ActionRestart},
+		{"o", ActionOpenBrowser},
+		{"O", ActionOpenIDE},
+		{"ctrl+o", ActionOpenWith},
 		{"R", ActionRestartAll},
 		{"q", ActionQuit},
 		{"ctrl+c", ActionQuit},

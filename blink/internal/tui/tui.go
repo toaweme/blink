@@ -58,6 +58,13 @@ func (m *Model) WithProjectPath(path string) *Model {
 	return m
 }
 
+// WithOpenTargets wires resolved service paths and user-scoped IDE settings.
+func (m *Model) WithOpenTargets(servicePaths map[string]string, configHome string) *Model {
+	m.servicePaths = servicePaths
+	m.settings = newYAMLIDEPreferenceStore(configHome)
+	return m
+}
+
 // NewApp wraps a model in a runnable bubbletea program in the alt-screen.
 // Mouse capture stays off so the terminal keeps native text selection. With it
 // on, every drag goes to the app instead and select-to-copy breaks. The wheel

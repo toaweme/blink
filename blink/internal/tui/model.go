@@ -59,12 +59,14 @@ type Model struct {
 	tabHistory []int
 	histPos    int
 
-	vp      viewport.Model
-	width   int
-	height  int
-	keymap  control.Keymap
-	control Controller
-	ready   bool
+	vp       viewport.Model
+	width    int
+	height   int
+	keymap   control.Keymap
+	control  Controller
+	opener   externalOpener
+	settings idePreferenceStore
+	ready    bool
 
 	followTail bool
 
@@ -136,7 +138,9 @@ type Model struct {
 	// projectPath is the resolved project root, shown shortened on the right of
 	// the help modal header so several concurrent blink instances are easy to
 	// tell apart. Empty hides it.
-	projectPath string
+	projectPath  string
+	servicePaths map[string]string
+	openWith     openWithState
 
 	// flash is a transient badge (e.g. COPIED, WRITTEN) shown in the top-right for
 	// flashDuration after an action. The pulse tick re-renders, so it fades on its
@@ -192,6 +196,8 @@ func NewModel(services []string, ctrl Controller) *Model {
 		active:      0,
 		keymap:      control.DefaultKeymap(),
 		control:     ctrl,
+		opener:      newSystemExternalOpener(),
+		settings:    newYAMLIDEPreferenceStore(""),
 		followTail:  true,
 		scrollState: make(map[string]tabScroll, len(services)+1),
 		spinner:     sp,
@@ -341,6 +347,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.watchDirs = msg.Dirs
 		m.watchPerSvc = msg.PerSvc
 		return m, nil
+	case browserOpenedMsg:
+		if msg.err != nil {
+			m.setFlash("OPEN FAILED", theme.Danger)
+		} else {
+			m.setFlash("OPENED "+msg.url, theme.Success)
+		}
+		return m, nil
+	case externalOpenedMsg:
+		if msg.err != nil {
+			m.setFlash("OPEN FAILED", theme.Danger)
+		} else {
+			m.setFlash("OPENED", theme.Success)
+		}
+		return m, nil
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -470,6 +490,9 @@ func (m *Model) handleStatusMsg(msg StatusMsg) (tea.Model, tea.Cmd) {
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.helpOpen {
 		return m.handleCommandCenterKey(msg)
+	}
+	if m.openWith.open {
+		return m.handleOpenWithKey(msg)
 	}
 	return m.handleGlobalKey(msg)
 }
@@ -613,6 +636,13 @@ func (m *Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if name := m.activeTab(); name != allTab && m.control != nil {
 			_ = m.control.Dispatch(control.ActionInsertBlank, name)
 		}
+		return m, nil
+	case control.ActionOpenBrowser:
+		return m, m.openBrowser()
+	case control.ActionOpenIDE:
+		return m, m.openIDE()
+	case control.ActionOpenWith:
+		m.openOpenWith(false)
 		return m, nil
 	case control.ActionRestartAll:
 		if m.control != nil {
@@ -783,6 +813,9 @@ func (m *Model) View() string {
 	}
 	if m.helpOpen {
 		return m.renderHelpDialog()
+	}
+	if m.openWith.open {
+		return m.renderOpenWithDialog()
 	}
 	if m.chromeless {
 		return strings.Repeat("\n", topPaddingLines) + m.vp.View()

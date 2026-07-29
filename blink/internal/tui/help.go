@@ -173,10 +173,10 @@ func (m *Model) renderHelpKeyboard() string {
 	lines = append(lines,
 		"",
 		title.Render("navigation (fixed)"),
-		pair("1-9", "jump to tab"),
-		pair("pgup / pgdn", "page up / down"),
-		pair("home / end", "scroll to top / bottom"),
-		pair("mouse / touchpad", "scroll"),
+		pair("1-9", "Jump to tab"),
+		pair("pgup / pgdn", "Page up / down"),
+		pair("home / end", "Scroll to top / bottom"),
+		pair("mouse / touchpad", "Scroll"),
 	)
 	return strings.Join(lines, "\n")
 }
