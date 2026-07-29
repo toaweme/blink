@@ -152,6 +152,7 @@ The default `blink` UI gives one tab per service plus an `all` tab, color-coded 
 - Scroll vs cursor mode (`e`); multi-line selection (`space`, `shift+↑/↓`) with copy (`c`), rewrite (`w`), and append (`a`) to `<LogDir>/<svc>.selected.log`, all to the clipboard too.
 - Container switcher for docker services: `Tab`/`Shift+Tab` cycles focus to one container's clean logs.
 - `L` toggles log-file writing live; a keyboard-help modal renders the live bindings.
+- `o` opens the active service in the browser, `O` opens its directory in the IDE, and `ctrl+o` opens the filesystem and IDE picker.
 
 ## Features
 

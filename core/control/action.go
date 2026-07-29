@@ -15,6 +15,12 @@ const (
 	// ActionInsertBlank publishes a blank line into the focused service's output
 	// stream (buffer and log file), mutating the shared Hub output.
 	ActionInsertBlank Action = "insert-blank"
+	// ActionOpenBrowser opens the focused service's first visible port.
+	ActionOpenBrowser Action = "open-browser"
+	// ActionOpenIDE opens the focused service directory in the IDE.
+	ActionOpenIDE Action = "open-ide"
+	// ActionOpenWith opens the picker for filesystem and IDE actions.
+	ActionOpenWith Action = "open-with"
 
 	// ActionQuit quits the consumer.
 	ActionQuit Action = "quit"
@@ -80,31 +86,34 @@ type Spec struct {
 // Keymap.Merge.
 func Actions() []Spec {
 	return []Spec{
-		{ActionRestart, "restart the focused service"},
-		{ActionRestartAll, "restart all services"},
-		{ActionInsertBlank, "insert a blank line into the focused service's output"},
-		{ActionNextTab, "next tab"},
-		{ActionPrevTab, "previous tab"},
-		{ActionNextChild, "focus the next container (docker tab)"},
-		{ActionPrevChild, "focus the previous container (docker tab)"},
-		{ActionHistBack, "back to the previously viewed tab"},
-		{ActionHistForward, "forward in tab history"},
-		{ActionClear, "clear the focused tab buffer"},
-		{ActionClearAll, "clear all buffers"},
-		{ActionCursorMode, "toggle cursor mode"},
-		{ActionCursorUp, "scroll up (cursor up in cursor mode)"},
-		{ActionCursorDown, "scroll down (cursor down in cursor mode)"},
-		{ActionExtendUp, "extend selection up"},
-		{ActionExtendDown, "extend selection down"},
-		{ActionToggleSelect, "toggle the cursor line in the selection"},
-		{ActionCopy, "copy selection (or cursor line) to the clipboard"},
-		{ActionClearCursor, "clear selection / exit cursor mode"},
-		{ActionWriteSelection, "rewrite <svc>.selected.log with the selection"},
-		{ActionAppendSelection, "append the selection to <svc>.selected.log"},
-		{ActionToggleLogs, "toggle log-file writing"},
-		{ActionCommandCenter, "open the help / key-bindings modal"},
-		{ActionToggleZen, "toggle zen mode"},
-		{ActionQuit, "quit"},
+		{ActionRestart, "Restart the focused service"},
+		{ActionRestartAll, "Restart all services"},
+		{ActionInsertBlank, "Insert a blank line into the focused service's output"},
+		{ActionOpenBrowser, "Open the focused service in the browser"},
+		{ActionOpenIDE, "Open the focused service in the IDE"},
+		{ActionOpenWith, "Open the filesystem and IDE picker"},
+		{ActionNextTab, "Next tab"},
+		{ActionPrevTab, "Previous tab"},
+		{ActionNextChild, "Focus the next container (docker tab)"},
+		{ActionPrevChild, "Focus the previous container (docker tab)"},
+		{ActionHistBack, "Back to the previously viewed tab"},
+		{ActionHistForward, "Forward in tab history"},
+		{ActionClear, "Clear the focused tab buffer"},
+		{ActionClearAll, "Clear all buffers"},
+		{ActionCursorMode, "Toggle cursor mode"},
+		{ActionCursorUp, "Scroll up (cursor up in cursor mode)"},
+		{ActionCursorDown, "Scroll down (cursor down in cursor mode)"},
+		{ActionExtendUp, "Extend selection up"},
+		{ActionExtendDown, "Extend selection down"},
+		{ActionToggleSelect, "Toggle the cursor line in the selection"},
+		{ActionCopy, "Copy selection (or cursor line) to the clipboard"},
+		{ActionClearCursor, "Clear selection / exit cursor mode"},
+		{ActionWriteSelection, "Rewrite <svc>.selected.log with the selection"},
+		{ActionAppendSelection, "Append the selection to <svc>.selected.log"},
+		{ActionToggleLogs, "Toggle log-file writing"},
+		{ActionCommandCenter, "Open the help / key-bindings modal"},
+		{ActionToggleZen, "Toggle zen mode"},
+		{ActionQuit, "Quit"},
 	}
 }
 

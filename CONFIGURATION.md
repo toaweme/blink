@@ -419,6 +419,9 @@ Every action is bound out of the box by the default keymap.
 | `restart` | `r` | restart the focused service |
 | `restart-all` | `R` | restart all services |
 | `insert-blank` | `enter` | insert a blank line into the focused output |
+| `open-browser` | `o` | open the focused service's first visible port in the browser |
+| `open-ide` | `O` | open the focused service directory in the IDE |
+| `open-with` | `ctrl+o` | open the filesystem and IDE picker |
 | `next-tab` | `right` | next tab |
 | `prev-tab` | `left` | previous tab |
 | `next-child` | `tab` | focus the next container (docker tab) |
