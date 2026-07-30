@@ -12,10 +12,11 @@ func Test_YAMLCodec_Marshal_Compact(t *testing.T) {
 	cfg := config.Config{
 		Services: []config.Service{
 			{
-				Name:    "api",
-				Runtime: "go",
-				Go:      &config.GoConfig{Package: "./cmd/api", Args: []string{"serve", "--dev"}},
-				Fs:      config.Fs{Include: []string{"package.json"}},
+				Name:     "api",
+				Runtime:  "go",
+				Hostname: "api.localhost",
+				Go:       &config.GoConfig{Package: "./cmd/api", Args: []string{"serve", "--dev"}},
+				Fs:       config.Fs{Include: []string{"package.json"}},
 				Reload: config.Reload{
 					Reload:         true,
 					ReloadOnDelete: []string{"node_modules"},
@@ -42,6 +43,7 @@ func Test_YAMLCodec_Marshal_Compact(t *testing.T) {
     reload:
       reload: true
       reload_on_delete: [node_modules]
+    hostname: api.localhost
     ports: [4000, 4001]
 
   - name: worker

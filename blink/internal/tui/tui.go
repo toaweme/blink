@@ -50,6 +50,13 @@ func (m *Model) WithServicePorts(ports map[string][]int) *Model {
 	return m
 }
 
+// WithServiceHostnames sets the host used by the browser shortcut for each
+// service. Services absent from the map use localhost.
+func (m *Model) WithServiceHostnames(hostnames map[string]string) *Model {
+	m.hostnames = hostnames
+	return m
+}
+
 // WithProjectPath records the project root shown (shortened to its last two
 // path segments) on the right of the help modal header, so several concurrent
 // blink instances can be told apart at a glance. Empty leaves it hidden.

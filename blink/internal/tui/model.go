@@ -109,6 +109,9 @@ type Model struct {
 	// updated from the published ports a StatusMsg carries once the stack is up.
 	// Rendered as a "http://localhost:<port>, ..." address left of the uptime.
 	ports map[string][]int
+	// hostnames maps service names to browser host overrides. Missing entries
+	// use localhost.
+	hostnames map[string]string
 
 	// watchFiles, watchDirs and watchPerSvc are the latest counts published by
 	// the supervisor via WatchStatsMsg. Zero before the first message.

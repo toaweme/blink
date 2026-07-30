@@ -222,6 +222,9 @@ type Service struct {
 	// Reload describes restart behavior and cross-service dependencies.
 	Reload Reload            `yaml:"reload,omitempty" json:"reload,omitempty" toml:"reload,omitempty"`
 	Env    map[string]string `yaml:"env,omitempty" json:"env,omitempty" toml:"env,omitempty"`
+	// Hostname overrides the host used when opening this service in a browser.
+	// Empty uses localhost.
+	Hostname string `yaml:"hostname,omitempty" json:"hostname,omitempty" toml:"hostname,omitempty"`
 	// Ports lists TCP ports this service binds. When ForceShutdown is on, blink
 	// scans them before start and kills any process already listening, so a
 	// previous hanging child does not break the next run.

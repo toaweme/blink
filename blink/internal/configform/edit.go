@@ -68,6 +68,13 @@ func nameField(svc *config.Service, others []string) *huh.Input {
 		Value(&svc.Name)
 }
 
+func hostnameField(svc *config.Service) *huh.Input {
+	return huh.NewInput().
+		Title("Browser hostname").
+		Description("host used by the open shortcut, blank = localhost (e.g. api.localhost)").
+		Value(&svc.Hostname)
+}
+
 func editShell(svc *config.Service, others []string) error {
 	run := ""
 	if svc.Commands.Run != nil {
@@ -79,6 +86,7 @@ func editShell(svc *config.Service, others []string) error {
 	if err := Run(huh.NewForm(huh.NewGroup(
 		nameField(svc, others),
 		dirField(svc),
+		hostnameField(svc),
 		huh.NewInput().
 			Title("Run command").
 			Description("the long-running command (e.g. ./bin/api, npm run dev)").
@@ -117,6 +125,7 @@ func editGo(svc *config.Service, others []string) error {
 	if err := Run(huh.NewForm(huh.NewGroup(
 		nameField(svc, others),
 		dirField(svc),
+		hostnameField(svc),
 		huh.NewInput().
 			Title("Go package").
 			Description("path passed to `go build` (e.g. ./cmd/api)").
@@ -156,6 +165,7 @@ func editDocker(svc *config.Service, others []string) error {
 	group := []huh.Field{
 		nameField(svc, others),
 		dirField(svc),
+		hostnameField(svc),
 		huh.NewConfirm().
 			Title("Stop containers when blink exits?").
 			Description("Keep leaves them running so the next start reuses warm databases (recommended)").

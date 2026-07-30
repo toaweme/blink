@@ -157,6 +157,7 @@ The fields below apply to every runtime, and the typed `go` / `node` / `docker` 
 | `dir` | string | `dir_root` | service working directory, relative to `dir_root`. Commands run here. |
 | `runtime` | string | `shell` | lifecycle owner. `shell`, `go`, `node`, `docker`. See [Runtimes](#runtimes). |
 | `env` | map | (none) | string map merged into every command's environment, and the lookup source for env-referenced ports. Your keys win over runtime-contributed ones. |
+| `hostname` | string | `localhost` | host used with the first service port when `o` opens the service in a browser. |
 
 A non-shell runtime contributes defaults (commands, watched extensions, install steps) that are merged into the service, and anything you set explicitly wins.
 
