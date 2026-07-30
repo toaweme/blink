@@ -1215,7 +1215,7 @@ func (m *Model) renderRightFooter(dim, val lipgloss.Style) string {
 		var parts []string
 		// while a container is focused, show that container's ports; the merged
 		// view falls back to the service-level (aggregate) ports.
-		if u := formatPortsURL(m.ports[m.viewKey()]); u != "" {
+		if u := formatPortsURL(m.hostnames[tab], m.ports[m.viewKey()]); u != "" {
 			parts = append(parts, url.Render(u))
 		}
 		if w := m.renderWatchStat(dim, val); w != "" {
@@ -1277,21 +1277,21 @@ func (m *Model) renderWatchStat(dim, val lipgloss.Style) string {
 		val.Render(strconv.Itoa(dirs)) + dim.Render("d")
 }
 
-// formatPortsURL renders a service's listening ports as a loopback address,
-// "http://localhost:8080" for one, "http://localhost:8080, 8081" for several.
-// Empty for a service with no known port.
-//
-// We need to use "localhost" in cases where the dev server (Vite's default) listens on ::1 alone, otherwise htto://127.0.0.1 hits
-// nothing.
-func formatPortsURL(ports []int) string {
+// formatPortsURL renders a service's listening ports with its browser host.
+// Empty hostnames use localhost so servers listening only on the IPv6 loopback
+// remain reachable through the displayed address.
+func formatPortsURL(hostname string, ports []int) string {
 	if len(ports) == 0 {
 		return ""
+	}
+	if hostname == "" {
+		hostname = "localhost"
 	}
 	nums := make([]string, len(ports))
 	for i, p := range ports {
 		nums[i] = strconv.Itoa(p)
 	}
-	return "http://localhost:" + strings.Join(nums, ", ")
+	return "http://" + hostname + ":" + strings.Join(nums, ", ")
 }
 
 // formatUptime renders a duration compactly (12s, 2m13s, 1h04m, 3d02h), trimmed
