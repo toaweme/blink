@@ -3,8 +3,8 @@ package format
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 
@@ -40,9 +40,9 @@ func (jsonCodec) Extension() string                  { return ".json" }
 func (yamlCodec) Marshal(v any) ([]byte, error) {
 	data, err := yaml.Marshal(v)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to marshal YAML config: %w", err)
 	}
-	return reformatKeyValuesAsInlineArray(data, "extensions")
+	return compactYAML(data)
 }
 func (yamlCodec) Unmarshal(data []byte, v any) error { return yaml.Unmarshal(data, v) }
 func (yamlCodec) Extension() string                  { return ".yml" }
@@ -95,53 +95,67 @@ func CodecForPath(path string) (Codec, error) {
 	return codecFor(f)
 }
 
-// reformatKeyValuesAsInlineArray formats every occurrence of key's sequence
-// value as an inline (flow-style) array.
-func reformatKeyValuesAsInlineArray(yamlBytes []byte, key string) ([]byte, error) {
+// compactYAML keeps scalar lists on one line and separates service entries.
+func compactYAML(yamlBytes []byte) ([]byte, error) {
 	var root yaml.Node
 	err := yaml.Unmarshal(yamlBytes, &root)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to decode YAML syntax tree: %w", err)
 	}
 
 	if len(root.Content) == 0 {
-		return nil, errors.New("empty YAML content")
+		return nil, fmt.Errorf("failed to format YAML config: %w", io.EOF)
 	}
-	node := root.Content[0]
 
-	setSequenceToFlowStyle(node, key)
+	setScalarSequencesToFlowStyle(root.Content[0])
 
-	out, err := yaml.Marshal(&root)
-	if err != nil {
-		return nil, err
+	var out bytes.Buffer
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&root); err != nil {
+		return nil, fmt.Errorf("failed to encode compact YAML config: %w", err)
 	}
-	return out, nil
+	if err := encoder.Close(); err != nil {
+		return nil, fmt.Errorf("failed to finish compact YAML config: %w", err)
+	}
+
+	return separateTopLevelSequenceEntries(out.Bytes()), nil
 }
 
-// setSequenceToFlowStyle recursively sets every sequence node reached under key
-// to FlowStyle, making it an inline array.
-func setSequenceToFlowStyle(node *yaml.Node, key string) {
-	switch node.Kind {
-	case yaml.MappingNode:
-		for i := 0; i < len(node.Content); i += 2 {
-			keyNode := node.Content[i]
-			valueNode := node.Content[i+1]
-
-			if keyNode.Value == key {
-				if valueNode.Kind == yaml.SequenceNode {
-					valueNode.Style = yaml.FlowStyle
-				}
+// setScalarSequencesToFlowStyle recursively inlines lists whose values are all scalars.
+func setScalarSequencesToFlowStyle(node *yaml.Node) {
+	if node.Kind == yaml.SequenceNode && len(node.Content) > 0 {
+		scalarOnly := true
+		for _, child := range node.Content {
+			if child.Kind != yaml.ScalarNode && child.Kind != yaml.AliasNode {
+				scalarOnly = false
+				break
 			}
-
-			setSequenceToFlowStyle(valueNode, key)
 		}
-	case yaml.SequenceNode:
-		for _, n := range node.Content {
-			setSequenceToFlowStyle(n, key)
-		}
-	default:
-		for _, n := range node.Content {
-			setSequenceToFlowStyle(n, key)
+		if scalarOnly {
+			node.Style = yaml.FlowStyle
 		}
 	}
+
+	for _, child := range node.Content {
+		setScalarSequencesToFlowStyle(child)
+	}
+}
+
+// separateTopLevelSequenceEntries inserts a blank line between block entries nested directly under a root key.
+func separateTopLevelSequenceEntries(data []byte) []byte {
+	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+	var out strings.Builder
+	seenEntry := false
+	for _, line := range lines {
+		if strings.HasPrefix(line, "  - ") {
+			if seenEntry {
+				out.WriteByte('\n')
+			}
+			seenEntry = true
+		}
+		out.WriteString(line)
+		out.WriteByte('\n')
+	}
+	return []byte(out.String())
 }
