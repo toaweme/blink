@@ -61,21 +61,34 @@ func (b *recordingBrowser) OpenIDE(command, path string) error {
 }
 
 func Test_Model_OpenBrowser(t *testing.T) {
-	browser := &recordingBrowser{}
-	m := NewModel([]string{"web"}, nil)
-	m.opener = browser
-	m.ports = map[string][]int{"web": {8080, 9090}}
+	tests := []struct {
+		name      string
+		hostnames map[string]string
+		want      string
+	}{
+		{name: "default hostname", want: "http://localhost:8080"},
+		{name: "configured hostname", hostnames: map[string]string{"web": "app.localhost"}, want: "http://app.localhost:8080"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			browser := &recordingBrowser{}
+			m := NewModel([]string{"web"}, nil)
+			m.opener = browser
+			m.ports = map[string][]int{"web": {8080, 9090}}
+			m.hostnames = tt.hostnames
 
-	_, cmd := m.handleGlobalKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
-	if cmd == nil {
-		t.Fatalf("open browser key returned no command")
-	}
-	msg := cmd().(browserOpenedMsg)
-	if msg.err != nil {
-		t.Fatalf("open browser command returned error: %v", msg.err)
-	}
-	if browser.url != "http://localhost:8080" {
-		t.Fatalf("opened URL = %q, want http://localhost:8080", browser.url)
+			_, cmd := m.handleGlobalKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
+			if cmd == nil {
+				t.Fatalf("open browser key returned no command")
+			}
+			msg := cmd().(browserOpenedMsg)
+			if msg.err != nil {
+				t.Fatalf("open browser command returned error: %v", msg.err)
+			}
+			if browser.url != tt.want {
+				t.Fatalf("opened URL = %q, want %q", browser.url, tt.want)
+			}
+		})
 	}
 }
 

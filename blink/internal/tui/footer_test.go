@@ -1,22 +1,27 @@
 package tui
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func Test_FormatPortsURL(t *testing.T) {
 	tests := []struct {
-		name  string
-		ports []int
-		want  string
+		name     string
+		hostname string
+		ports    []int
+		want     string
 	}{
-		{"none", nil, ""},
-		{"empty", []int{}, ""},
-		{"single", []int{8080}, "http://localhost:8080"},
-		{"multiple", []int{8080, 8081, 9090}, "http://localhost:8080, 8081, 9090"},
+		{name: "none", ports: nil, want: ""},
+		{name: "empty", ports: []int{}, want: ""},
+		{name: "default hostname", ports: []int{8080}, want: "http://localhost:8080"},
+		{name: "configured hostname", hostname: "api.localhost", ports: []int{8080}, want: "http://api.localhost:8080"},
+		{name: "multiple", hostname: "api.localhost", ports: []int{8080, 8081, 9090}, want: "http://api.localhost:8080, 8081, 9090"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := formatPortsURL(tt.ports); got != tt.want {
-				t.Fatalf("formatPortsURL(%v) = %q, want %q", tt.ports, got, tt.want)
+			if got := formatPortsURL(tt.hostname, tt.ports); got != tt.want {
+				t.Fatalf("formatPortsURL(%q, %v) = %q, want %q", tt.hostname, tt.ports, got, tt.want)
 			}
 		})
 	}
@@ -88,6 +93,7 @@ func Test_HandleStatusMsg_RecordsPorts(t *testing.T) {
 func Test_RenderRightFooter_PortsFollowFocus(t *testing.T) {
 	m := NewModel([]string{"docker"}, nil)
 	m.active = 0 // lone service: no all-tab, docker at index 0
+	m.hostnames = map[string]string{"docker": "infra.localhost"}
 	m.ports = map[string][]int{
 		"docker":                      {5432, 6379},
 		"docker" + childSep + "db":    {5432},
@@ -103,5 +109,9 @@ func Test_RenderRightFooter_PortsFollowFocus(t *testing.T) {
 	got := m.ports[m.viewKey()]
 	if len(got) != 1 || got[0] != 6379 {
 		t.Fatalf("focused redis ports = %v, want [6379]", got)
+	}
+	footer := m.renderRightFooter(barStyle(), barStyle())
+	if !strings.Contains(footer, "http://infra.localhost:6379") {
+		t.Fatalf("focused redis footer = %q, want inherited hostname", footer)
 	}
 }

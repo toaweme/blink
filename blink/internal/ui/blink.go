@@ -56,6 +56,7 @@ func (b *Blink) Run(cfg config.Config) error {
 		WithKeymap(km).
 		WithZen(cfg.Zen).
 		WithServicePorts(servicePorts(cfg)).
+		WithServiceHostnames(serviceHostnames(cfg)).
 		WithProjectPath(projectPath).
 		WithOpenTargets(servicePaths(cfg), cfg.Paths.ConfigHome).
 		WithLogControl(cfg.Paths.LogDir, sink.Enabled(), sink.Toggle)
@@ -103,6 +104,16 @@ func servicePaths(cfg config.Config) map[string]string {
 	out := make(map[string]string, len(cfg.Services))
 	for _, svc := range cfg.Services {
 		out[svc.Name] = filepath.Clean(filepath.Join(cfg.DirRoot, svc.Dir))
+	}
+	return out
+}
+
+func serviceHostnames(cfg config.Config) map[string]string {
+	out := make(map[string]string, len(cfg.Services))
+	for _, svc := range cfg.Services {
+		if svc.Hostname != "" {
+			out[svc.Name] = svc.Hostname
+		}
 	}
 	return out
 }

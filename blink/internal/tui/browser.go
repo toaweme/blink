@@ -110,7 +110,11 @@ func (m *Model) openBrowser() tea.Cmd {
 		m.setFlash("NO PORT", theme.Warning)
 		return nil
 	}
-	url := fmt.Sprintf("http://localhost:%d", ports[0])
+	hostname := m.hostnames[m.activeTab()]
+	if hostname == "" {
+		hostname = "localhost"
+	}
+	url := fmt.Sprintf("http://%s:%d", hostname, ports[0])
 	return func() tea.Msg {
 		return browserOpenedMsg{url: url, err: m.opener.OpenBrowser(url)}
 	}
