@@ -5,6 +5,21 @@ All notable changes to this project are documented here, newest first.
 Entries are generated from [Conventional Commits](https://www.conventionalcommits.org)
 and grouped by change type. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-08-03
+
+### Features
+
+- Configure service browser hostnames by [@iberflow](https://github.com/iberflow) in [9ac2831](https://github.com/toaweme/blink/commit/9ac283189f54d806df0ed17c26e57d743e4c0d10).
+- Compact YAML config output by [@iberflow](https://github.com/iberflow) in [cc4dccd](https://github.com/toaweme/blink/commit/cc4dccd3e096b61f2ef562af9385ef9e00eb0669).
+
+### Fixes
+
+- Use service hostname in footer by [@iberflow](https://github.com/iberflow) in [2edba90](https://github.com/toaweme/blink/commit/2edba906b0d8928d408627cdbf90ffc8c5d22358).
+
+### Refactors
+
+- Replace io.EOF with ErrEmptyConfig in YAML formatter by [@iberflow](https://github.com/iberflow) in [9798cb3](https://github.com/toaweme/blink/commit/9798cb3ee97ce20c524271657c47067895bfe740).
+
 ## [0.6.0] - 2026-07-29
 
 ### Features
@@ -225,6 +240,7 @@ and grouped by change type. This project adheres to [Semantic Versioning](https:
 - Bump deps by [@iberflow](https://github.com/iberflow) in [8678e08](https://github.com/toaweme/blink/commit/8678e08f4f4027ca1d983fa388704052e276a35e).
 - Freeze go 1.26.4 by [@iberflow](https://github.com/iberflow) in [c846eee](https://github.com/toaweme/blink/commit/c846eeefe2e0ed9afc11748e172443acdfacc85e).
 
+[0.7.0]: https://github.com/toaweme/blink/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/toaweme/blink/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/toaweme/blink/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/toaweme/blink/compare/v0.5.0...v0.5.1
