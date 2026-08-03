@@ -3,8 +3,8 @@ package format
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"path/filepath"
 	"strings"
 
@@ -13,6 +13,10 @@ import (
 
 	clicfg "github.com/toaweme/cli/config"
 )
+
+// ErrEmptyConfig reports a config that marshaled to no YAML document at all,
+// which leaves the formatter with no root node to work on.
+var ErrEmptyConfig = errors.New("empty config")
 
 // Codec marshals and unmarshals a Config in one on-disk format. It is the
 // cli/config codec contract, so the same value satisfies that package's Store
@@ -104,7 +108,7 @@ func compactYAML(yamlBytes []byte) ([]byte, error) {
 	}
 
 	if len(root.Content) == 0 {
-		return nil, fmt.Errorf("failed to format YAML config: %w", io.EOF)
+		return nil, fmt.Errorf("failed to format YAML config: %w", ErrEmptyConfig)
 	}
 
 	setScalarSequencesToFlowStyle(root.Content[0])
