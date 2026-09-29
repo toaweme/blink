@@ -15,7 +15,7 @@ import (
 // to an environment variable holding the port at runtime. A literal serializes
 // as a bare integer, a reference as the bare env-var name. A "${KEY}"/"$KEY"
 // form is accepted on input but normalises to the bare name on write.
-type Port struct { //nolint:recvcheck // UnmarshalYAML must be a pointer receiver to mutate; Marshal* must be value receivers so marshaling a non-addressable Port copy still uses them
+type Port struct {
 	// Value is the literal port; meaningful only when EnvKey is empty.
 	Value int
 	// EnvKey, when non-empty, names the env var the port is read from at
